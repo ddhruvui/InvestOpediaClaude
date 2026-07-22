@@ -1,0 +1,5 @@
+# Downloaded EODHD data (mirrored from the RunPod volume by download.sh) — never commit
+/data/
+.DS_Store
+__pycache__/
+*.pyc
