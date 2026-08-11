@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Pod entrypoint (uploaded to the volume, run via: bash /workspace/code/bootstrap.sh).
-# Runs the EODHD fetcher under a watchdog, then ALWAYS self-terminates — retrying until the
-# API CONFIRMS the pod is gone (HTTP 204) or already gone (404), so a stuck/failed job can
-# never keep billing. Stdlib python only (no curl, no pip).
+# Runs the vendor fetcher named by FETCH_SCRIPT (set by launch.sh; defaults to the EODHD
+# fetch.py) under a watchdog, then ALWAYS self-terminates — retrying until the API CONFIRMS the
+# pod is gone (HTTP 204) or already gone (404), so a stuck/failed job can never keep billing.
+# Stdlib python only (no curl, no pip).
 set +e
 
-# 8h watchdog: a cold full-universe EODHD pass (prices+divs+splits+fundamentals+estimates+news
-# for ~500 tickers) runs several hours; this still bounds a hung fetch.
-timeout 28800 python /workspace/code/fetch.py
+# 8h watchdog: a cold full-universe pass (EODHD prices+divs+splits+fundamentals+estimates+news, or
+# Sharadar SEP+SF1+ACTIONS, for ~500 tickers) runs several hours; a bulk backfill can run longer.
+# This bounds a hung fetch without cutting a legitimate long backfill short.
+timeout 28800 python "/workspace/code/${FETCH_SCRIPT:-fetch.py}"
 ec=$?
 echo "fetch=$ec — terminating pod $RUNPOD_POD_ID"
 

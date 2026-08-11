@@ -1,18 +1,17 @@
 {
-  "exchange": "US",
   "from": "2025-07-28",
   "news_from": "2025-07-28",
   "market_from": "2025-07-28",
   "incremental": true,
-  "earnings_upcoming": true,
-  "earnings_calendar_days": 90,
   "datasets": [
-    "eod",
-    "dividends",
-    "splits",
-    "fundamentals",
-    "estimates",
-    "news"
+    "prices"
+  ],
+  "symbol_list": true,
+  "min_request_interval_sec": 72,
+  "max_requests_per_run": 700,
+  "skip_fresh_days": 5,
+  "market": [
+    "SPY"
   ],
   "stocks": [
     "A",
@@ -518,27 +517,5 @@
     "ZBH",
     "ZBRA",
     "ZTS"
-  ],
-  "market": [
-    "SPY.US"
-  ],
-  "market_dividends": [
-    "SPY.US"
-  ],
-  "index_constituents": [
-    "GSPC.INDX"
-  ],
-  "exchanges": [
-    "US"
-  ],
-  "symbol_lists": [
-    "US"
-  ],
-  "eod_bulk": {
-    "enabled": true,
-    "exchange": "US",
-    "from": "2025-07-28",
-    "to": null,
-    "max_days_per_run": 500
-  }
+  ]
 }

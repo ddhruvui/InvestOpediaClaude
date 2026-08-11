@@ -1,18 +1,15 @@
 {
-  "exchange": "US",
   "from": "2025-07-28",
-  "news_from": "2025-07-28",
-  "market_from": "2025-07-28",
+  "sf1_from": "2025-07-28",
+  "dimension": "ARQ",
   "incremental": true,
-  "earnings_upcoming": true,
-  "earnings_calendar_days": 90,
-  "datasets": [
-    "eod",
-    "dividends",
-    "splits",
-    "fundamentals",
-    "estimates",
-    "news"
+  "whole_refresh_days": 7,
+  "ticker_replace": ["-", "."],
+  "ticker_overrides": {},
+  "tables": [
+    "SEP",
+    "SF1",
+    "ACTIONS"
   ],
   "stocks": [
     "A",
@@ -519,26 +516,8 @@
     "ZBRA",
     "ZTS"
   ],
-  "market": [
-    "SPY.US"
-  ],
-  "market_dividends": [
-    "SPY.US"
-  ],
-  "index_constituents": [
-    "GSPC.INDX"
-  ],
-  "exchanges": [
-    "US"
-  ],
-  "symbol_lists": [
-    "US"
-  ],
-  "eod_bulk": {
-    "enabled": true,
-    "exchange": "US",
-    "from": "2025-07-28",
-    "to": null,
-    "max_days_per_run": 500
-  }
+  "whole_tables": [
+    "TICKERS",
+    "SP500"
+  ]
 }

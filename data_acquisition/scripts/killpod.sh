@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Safety net: terminate any leftover "investopediaclaude-eodhd" pods that failed to
-# self-terminate. Lists pods via the account API and DELETEs each match. Run this
-# if launch.sh reported a pod but it never died (or just run it periodically).
+# Safety net: terminate any leftover "investopediaclaude-*" pods (eodhd, nasdaq, …) that failed
+# to self-terminate. Lists pods via the account API and DELETEs each match. Run this if launch.sh
+# reported a pod but it never died (or just run it periodically).
 . "$(dirname "$0")/_common.sh"
 : "${RUNPOD_API_KEY:?account rpa_ key, set in runpod/.env}"
 
@@ -13,7 +13,7 @@ pods = json.load(sys.stdin)
 pods = pods if isinstance(pods, list) else pods.get("pods", pods.get("data", []))
 killed = 0
 for p in pods:
-    if p.get("name") != "investopediaclaude-eodhd":
+    if not str(p.get("name") or "").startswith("investopediaclaude-"):
         continue
     pid = p.get("id")
     req = u.Request("https://rest.runpod.io/v1/pods/" + pid, method="DELETE")

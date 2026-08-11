@@ -78,6 +78,9 @@ BULK_FIELDS = ("code", "date", "open", "high", "low", "close", "adjusted_close",
 PAGE_SIZE = 1000   # EODHD list-endpoint max page
 MAX_PAGES = 100    # hard backstop so offset pagination can never loop forever
 CAL_CHUNK = 100    # symbols per calendar/earnings call — keeps the URL well under any length limit
+# Vendor 5xx blips run minutes, not the ~6s get_json's in-request retries cover — so first-pass
+# failures get one more attempt at end of run, after this pause (seconds; env-overridable).
+RETRY_SWEEP_DELAY = int(os.environ.get("RETRY_SWEEP_DELAY", "60"))
 # Env-gated: when truthy, a run log is stored on success. Errors/crashes log regardless (see below).
 STORE_LOGS = os.environ.get("STORE_LOGS", "").strip().lower() in ("1", "true", "yes", "on")
 
@@ -350,10 +353,17 @@ def _merge(existing, new, keyfn):
     return rows, added
 
 
-def _write(out_path, data):
+def _write(out_path, data, indent=None):
+    """Atomically write JSON: dump to a sibling .part, flush+fsync, then os.replace() into place.
+    A pod killed mid-write can then never leave a truncated file — critical for eod_bulk, whose
+    resume logic treats any existing day-file as complete and skips it forever."""
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "w") as f:
-        json.dump(data, f)
+    tmp = out_path + ".part"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=indent)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, out_path)
 
 
 def main():
@@ -382,39 +392,50 @@ def main():
 
     os.makedirs(DATA_DIR, exist_ok=True)
     results = []
+    retry_queue = []  # (index into results, attempt fn) per first-pass failure — end-of-run sweep
 
     def record_series(dataset, symbol, out, low_fetch, default_from, incr_key):
         """Full refetch, or — for append-only streams when incremental — fetch the delta and merge."""
-        entry = {"symbol": symbol, "dataset": dataset, "ok": False, "count": 0, "added": 0, "error": None}
-        try:
-            existing = _read_existing(out) if (incremental and incr_key) else []
-            if existing:
-                since = _latest_date(existing) or default_from
-                merged, added = _merge(existing, low_fetch(symbol, since), incr_key)
-                mode = f"incr≥{since}"
-            else:
-                new = low_fetch(symbol, default_from)
-                merged, added = _merge([], new, incr_key) if incr_key else (new, len(new))
-                mode = f"full≥{default_from}"
-            _write(out, merged)
-            entry.update(ok=True, count=len(merged), added=added)
-            log(f"OK   {dataset:<18} {symbol}: {len(merged)} (+{added}) [{mode}] -> {out}")
-        except Exception as e:
-            entry["error"] = f"{type(e).__name__}: {e}"
-            log(f"FAIL {dataset:<18} {symbol}: {entry['error']}")
+        def attempt():
+            entry = {"symbol": symbol, "dataset": dataset, "ok": False, "count": 0, "added": 0, "error": None}
+            try:
+                existing = _read_existing(out) if (incremental and incr_key) else []
+                if existing:
+                    since = _latest_date(existing) or default_from
+                    merged, added = _merge(existing, low_fetch(symbol, since), incr_key)
+                    mode = f"incr≥{since}"
+                else:
+                    new = low_fetch(symbol, default_from)
+                    merged, added = _merge([], new, incr_key) if incr_key else (new, len(new))
+                    mode = f"full≥{default_from}"
+                _write(out, merged)
+                entry.update(ok=True, count=len(merged), added=added)
+                log(f"OK   {dataset:<18} {symbol}: {len(merged)} (+{added}) [{mode}] -> {out}")
+            except Exception as e:
+                entry["error"] = f"{type(e).__name__}: {e}"
+                log(f"FAIL {dataset:<18} {symbol}: {entry['error']}")
+            return entry
+        entry = attempt()
+        if not entry["ok"]:
+            retry_queue.append((len(results), attempt))
         results.append(entry)
 
     def record_snapshot(dataset, symbol, out, fetch, count_fn=None):
-        entry = {"symbol": symbol, "dataset": dataset, "ok": False, "count": 0, "added": 0, "error": None}
-        try:
-            data = fetch()
-            _write(out, data)
-            c = count_fn(data) if count_fn else (len(data) if isinstance(data, (list, dict)) else 0)
-            entry.update(ok=True, count=c, added=c)
-            log(f"OK   {dataset:<18} {symbol}: {c} [snapshot] -> {out}")
-        except Exception as e:
-            entry["error"] = f"{type(e).__name__}: {e}"
-            log(f"FAIL {dataset:<18} {symbol}: {entry['error']}")
+        def attempt():
+            entry = {"symbol": symbol, "dataset": dataset, "ok": False, "count": 0, "added": 0, "error": None}
+            try:
+                data = fetch()
+                _write(out, data)
+                c = count_fn(data) if count_fn else (len(data) if isinstance(data, (list, dict)) else 0)
+                entry.update(ok=True, count=c, added=c)
+                log(f"OK   {dataset:<18} {symbol}: {c} [snapshot] -> {out}")
+            except Exception as e:
+                entry["error"] = f"{type(e).__name__}: {e}"
+                log(f"FAIL {dataset:<18} {symbol}: {entry['error']}")
+            return entry
+        entry = attempt()
+        if not entry["ok"]:
+            retry_queue.append((len(results), attempt))
         results.append(entry)
 
     # 1) per-equity datasets
@@ -520,6 +541,20 @@ def main():
         log(f"OK   {'eod_bulk':<18} {bex}: +{fetched} day-files (skipped {skipped} existing; {status})"
             f" -> {os.path.join(DATA_DIR, 'eod_bulk', bex)}/")
 
+    # End-of-run retry sweep: each first-pass failure gets one fresh attempt before the run is
+    # judged. record_series/record_snapshot are idempotent (atomic writes, incremental re-reads
+    # disk), so a re-run is safe; eod_bulk is excluded — it is non-fatal and resumes across runs.
+    if retry_queue:
+        log(f"RETRY {len(retry_queue)} failed task(s) after {RETRY_SWEEP_DELAY}s pause ...")
+        time.sleep(RETRY_SWEEP_DELAY)
+        healed = 0
+        for idx, attempt in retry_queue:
+            entry = attempt()
+            entry["retried"] = True  # manifest: distinguishes healed-on-retry from clean first pass
+            healed += 1 if entry["ok"] else 0
+            results[idx] = entry
+        log(f"RETRY sweep healed {healed}/{len(retry_queue)}")
+
     all_ok = bool(results) and all(r["ok"] for r in results)
     manifest = {
         "vendor": "EODHD",
@@ -541,8 +576,7 @@ def main():
         "ok": all_ok,
         "results": results,
     }
-    with open(os.path.join(DATA_DIR, "_run.json"), "w") as f:
-        json.dump(manifest, f, indent=2)
+    _write(os.path.join(DATA_DIR, "_run.json"), manifest, indent=2)
 
     if not all_ok:
         # Errors are ALWAYS logged, regardless of STORE_LOGS.
