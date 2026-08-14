@@ -91,11 +91,15 @@ API = "https://api.sharadar.com/v1.0/data"
 # logical table (spec/config) -> api.sharadar.com endpoint name
 ENDPOINT = {"SEP": "stocks", "SF1": "fundamentals", "ACTIONS": "actions",
             "TICKERS": "tickers", "SP500": "sp500"}
-# Server-side row cap on ANY single response, measured live: asking for limit=150000 or 1000000
-# both return exactly 100000 rows. Paging is by `offset`, so this doubles as our page size.
-ROW_CAP = int(os.environ.get("SHARADAR_ROW_CAP", "100000"))
+# Server-side row cap on ANY single response. THIS MOVES — measured at 100,000 on 2026-08-13 and
+# TIGHTENED TO 10,000 by 2026-08-14, at which point limit=10001 returns
+# HTTP 400 "limit too large ... format=json accepts at most 10,000 rows". Asking for more than the
+# current cap is a hard error, not a silent truncation, so a stale value here fails the whole run.
+# Paging is by `offset` and still works at the new cap. If Sharadar moves it again, this is the
+# single knob (SHARADAR_ROW_CAP) — the 400 body states the current limit verbatim.
+ROW_CAP = int(os.environ.get("SHARADAR_ROW_CAP", "10000"))
 LIMIT = ROW_CAP           # per-page `limit` we ask for (the server will not exceed ROW_CAP anyway)
-MAX_PAGES = int(os.environ.get("SHARADAR_MAX_PAGES", "200"))  # backstop: 200 * 100k = 20M rows
+MAX_PAGES = int(os.environ.get("SHARADAR_MAX_PAGES", "500"))  # backstop: 500 * 10k = 5M rows
 # Server-enforced ticker-list caps (HTTP 400 past either): at most 30 tickers AND 200 characters.
 # _ticker_batches() packs to both. Keep headroom under each so a long-symbol run can't skim the edge.
 MAX_TICKERS_PER_CALL = int(os.environ.get("SHARADAR_BATCH", "30"))

@@ -1,5 +1,5 @@
 {
-  "from": "2021-07-28",
+  "from": "2000-01-01",
   "sf1_from": "2021-07-28",
   "dimension": "ARQ",
   "incremental": true,
@@ -535,5 +535,6 @@
   "whole_tables": [
     "TICKERS",
     "SP500"
-  ]
+  ],
+  "_sf1_from_comment": "SF1 STAYS AT 5 YEARS \u2014 not a choice. The retail tier caps fundamentals history: calendardate.gte=2000-01-01 returns only 20 quarters (oldest 2021-09-30) and the years=10 bulk download returns 403. SEP and ACTIONS DO reach 2000 and are widened. Lifting this needs a higher Sharadar subscription, not a config change."
 }
