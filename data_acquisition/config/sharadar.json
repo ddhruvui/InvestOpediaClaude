@@ -1,15 +1,31 @@
 {
-  "from": "2025-07-28",
-  "sf1_from": "2025-07-28",
+  "from": "2021-07-28",
+  "sf1_from": "2021-07-28",
   "dimension": "ARQ",
   "incremental": true,
-  "whole_refresh_days": 7,
-  "ticker_replace": ["-", "."],
-  "ticker_overrides": {},
+  "whole_refresh_days": 1,
+  "ticker_replace": [
+    "-",
+    "."
+  ],
+  "_ticker_overrides_comment": "Sharadar files FUNDAMENTALS under an issuer's primary share class only (GOOG/FOX/NWS return 0 ARQ rows; GOOGL/FOXA/NWSA are populated). SEP and ACTIONS DO carry each class separately, so the map is scoped by ticker_override_tables \u2014 applying it everywhere dropped GOOG/FOX/NWS from prices and corporate actions entirely and lost GOOG's real 20:1 split. Join through permaticker (D-13), not the symbol.",
+  "ticker_overrides": {
+    "GOOG": "GOOGL",
+    "NWS": "NWSA",
+    "FOX": "FOXA"
+  },
+  "ticker_override_tables": [
+    "SF1"
+  ],
   "tables": [
     "SEP",
     "SF1",
     "ACTIONS"
+  ],
+  "_whole_market_comment": "SURVIVORSHIP. The per-ticker pull is bounded by the 503 CURRENT constituents, so a name that already left the index can never appear \u2014 ACTIONS held exactly 1 'delisted' row. These tables are ALSO pulled unfiltered over the date window into <TABLE>/_ALL.json, giving spec \u00a72's '21k+ active+delisted' D-04 and survivorship-free D-05. SEP is excluded on purpose: whole-market daily prices are ~63M rows and eod_bulk already provides survivorship-free prices.",
+  "whole_market_tables": [
+    "ACTIONS",
+    "SF1"
   ],
   "stocks": [
     "A",

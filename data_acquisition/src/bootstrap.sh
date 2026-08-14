@@ -6,12 +6,38 @@
 # Stdlib python only (no curl, no pip).
 set +e
 
+# Mirror EVERYTHING this script and the fetcher print to the volume. The pod deletes itself at the
+# end of the run, taking its container log with it, so anything that goes wrong BEFORE the fetcher's
+# own logging starts (bad FETCH_SCRIPT, failed pip install, unwritable DATA_DIR, an import error at
+# module scope) otherwise leaves no trace anywhere — the pod just vanishes having written nothing.
+BOOT_LOG_DIR="/workspace/_pod_logs"
+mkdir -p "$BOOT_LOG_DIR" 2>/dev/null
+BOOT_LOG="$BOOT_LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-${FETCH_SCRIPT:-fetch.py}-${RUNPOD_POD_ID:-nopod}.log"
+exec > >(tee -a "$BOOT_LOG") 2>&1
+echo "bootstrap start $(date -u +%FT%TZ) pod=${RUNPOD_POD_ID:-?} script=${FETCH_SCRIPT:-fetch.py} \
+data_dir=${DATA_DIR:-<fetcher default>} config=${CONFIG_PATH:-<fetcher default>}"
+python -c 'import sys; print("python", sys.version)' 2>&1
+ls -la /workspace/code/ 2>&1 | head -20
+
+# Optional pip deps. Every fetcher is stdlib-only EXCEPT fetch_calendar.py, which needs
+# `exchange_calendars` (D-11 wants FUTURE sessions, which no amount of stdlib can derive).
+# launch.sh sets PIP_PACKAGES only for the vendors that need it, so the common path stays offline.
+if [ -n "${PIP_PACKAGES:-}" ]; then
+  echo "installing pip packages: $PIP_PACKAGES"
+  timeout 600 python -m pip install --quiet --no-input --disable-pip-version-check $PIP_PACKAGES \
+    || echo "!! pip install failed — the fetcher will report the missing import"
+fi
+
 # 8h watchdog: a cold full-universe pass (EODHD prices+divs+splits+fundamentals+estimates+news, or
 # Sharadar SEP+SF1+ACTIONS, for ~500 tickers) runs several hours; a bulk backfill can run longer.
 # This bounds a hung fetch without cutting a legitimate long backfill short.
-timeout 28800 python "/workspace/code/${FETCH_SCRIPT:-fetch.py}"
+# VALIDATE_ARGS is the one job that takes CLI flags (validate.py --repair); every fetcher ignores
+# extra argv, so passing it unconditionally is harmless. Unquoted on purpose: it is a flag list.
+timeout 28800 python "/workspace/code/${FETCH_SCRIPT:-fetch.py}" ${VALIDATE_ARGS:-}
 ec=$?
-echo "fetch=$ec — terminating pod $RUNPOD_POD_ID"
+echo "fetch=$ec ($([ $ec -eq 124 ] && echo 'WATCHDOG TIMEOUT' || echo 'exited')) at $(date -u +%FT%TZ) \
+— terminating pod $RUNPOD_POD_ID"
+sync 2>/dev/null   # flush the tee'd log to the network volume before the pod is destroyed
 
 # DELETE the pod via the REST API using the ACCOUNT key (RUNPOD_TERMINATE_KEY); the
 # pod-injected RUNPOD_API_KEY is pod-scoped and 403s on delete. Success is asserted

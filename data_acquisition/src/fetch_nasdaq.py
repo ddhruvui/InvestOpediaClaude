@@ -25,10 +25,16 @@ API CONTRACT (verified live against api.sharadar.com):
   - Filters : ticker=, dimension= (SF1), and range operators <col>.gte= / <col>.lte= — same operator
               syntax as the datatables API. Incremental uses lastupdated.gte= (SEP/SF1/TICKERS) or
               date.gte= (ACTIONS/SP500 carry no lastupdated).
-  - Paging  : NONE (no cursor/offset). A single call returns every matching row up to `limit`, so we
-              pass a large LIMIT; if count == LIMIT we log a truncation WARN (never silently drop).
-  - Limits  : ~500 requests / 900s, exposed via RateLimit-Remaining / RateLimit-Reset headers. We
-              burst until nearly exhausted, then sleep until the window resets (see _pace).
+  - Paging  : OFFSET-based. The server caps ANY result set at ROW_CAP (100,000) rows regardless of
+              the `limit` asked for, so every call is paged: offset=0, ROW_CAP, 2*ROW_CAP, … until a
+              page comes back short. Verified live 2026-08-11 (offset=100000 returns a different row
+              set than offset=0). Never trust `count` alone — a bare count==100000 is a CAP HIT.
+  - Ticker  : the `ticker` comma-list is capped at **30 tickers AND 200 characters** (server-enforced,
+              HTTP 400 "Too many tickers" / "ticker exceeds maximum length of 200 characters").
+              _ticker_batches() packs to BOTH limits.
+  - Limits  : exposed via **x-**ratelimit-limit / -remaining / -reset (reset is a UNIX TIMESTAMP, not
+              a delay) plus a weighted budget (x-ratelimit-weighted-limit/-remaining; a full-table
+              call costs 100). We burst until nearly exhausted, then sleep to the reset (see _pace).
 
 PER-TICKER SERIES (config "tables", applied to each "stocks" entry):
     SEP      D-12  ticker,date,open,high,low,close,volume,closeadj,closeunadj,lastupdated.
@@ -61,7 +67,10 @@ Logging (env-controlled): `_run.json` manifest is always written. A run log (`lo
 stored ONLY when `STORE_LOGS` is truthy; failures (`logs/error-<ts>.log`) and crashes
 (`logs/crash-<ts>.log`) are ALWAYS logged. Exit code: 0 if every job succeeded, 1 otherwise.
 """
+import csv
+import gzip
 import http.client
+import io
 import json
 import os
 import ssl
@@ -71,6 +80,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 
 # SHARADAR_API_KEY is the sharadar.com retail key; NASDAQ_DATA_LINK_API_KEY kept as a back-compat alias.
@@ -81,16 +91,23 @@ API = "https://api.sharadar.com/v1.0/data"
 # logical table (spec/config) -> api.sharadar.com endpoint name
 ENDPOINT = {"SEP": "stocks", "SF1": "fundamentals", "ACTIONS": "actions",
             "TICKERS": "tickers", "SP500": "sp500"}
-LIMIT = int(os.environ.get("SHARADAR_LIMIT", "1000000"))  # single-call page size (API has no cursor)
-# The API accepts a comma-list of tickers, so a cold backfill pulls the universe in BATCH_SIZE-ticker
-# calls (500 tickers => ~5 calls/endpoint) instead of one-per-ticker; warm runs use a single
-# whole-universe lastupdated.gte call per endpoint. Both keep us far under the 500-req/900s limit.
-BATCH_SIZE = int(os.environ.get("SHARADAR_BATCH", "100"))
-# ~500 req / 900s. Small polite gap between calls; _pace() additionally sleeps to the window reset
-# when RateLimit-Remaining runs low, so a full-universe pass never trips the limit.
+# Server-side row cap on ANY single response, measured live: asking for limit=150000 or 1000000
+# both return exactly 100000 rows. Paging is by `offset`, so this doubles as our page size.
+ROW_CAP = int(os.environ.get("SHARADAR_ROW_CAP", "100000"))
+LIMIT = ROW_CAP           # per-page `limit` we ask for (the server will not exceed ROW_CAP anyway)
+MAX_PAGES = int(os.environ.get("SHARADAR_MAX_PAGES", "200"))  # backstop: 200 * 100k = 20M rows
+# Server-enforced ticker-list caps (HTTP 400 past either): at most 30 tickers AND 200 characters.
+# _ticker_batches() packs to both. Keep headroom under each so a long-symbol run can't skim the edge.
+MAX_TICKERS_PER_CALL = int(os.environ.get("SHARADAR_BATCH", "30"))
+MAX_TICKER_CHARS = int(os.environ.get("SHARADAR_TICKER_CHARS", "195"))
+# Small polite gap between calls; _pace() additionally sleeps to the window reset when the
+# x-ratelimit headers say we're nearly out, so a full-universe pass never trips the limit.
 PACE_SEC = float(os.environ.get("SHARADAR_PACE_SEC", "0.05"))
 RL_BUFFER = 3           # start waiting for the reset when this few requests remain in the window
 WHOLE_REFRESH_DAYS = 7  # skip re-pulling a whole-table snapshot whose file is younger than this
+# Bulk-zip window for the survivorship-free whole-market pull. 5 is what the retail tier serves;
+# years=10 returns 403.
+WHOLE_MARKET_YEARS = int(os.environ.get("SHARADAR_WHOLE_YEARS", "5"))
 # Vendor 5xx blips run minutes, not the seconds in-request retries cover — so first-pass failures
 # get one more attempt at end of run, after this pause (seconds; env-overridable).
 RETRY_SWEEP_DELAY = int(os.environ.get("RETRY_SWEEP_DELAY", "60"))
@@ -106,7 +123,14 @@ PER_TICKER = {
     "SF1":     {"date_filter": "calendardate", "from_key": "sf1_from", "incr_col": "lastupdated"},
     "ACTIONS": {"date_filter": "date",         "from_key": "from",     "incr_col": "date"},
 }
-WHOLE_TABLES = {"TICKERS", "SP500"}
+# Whole-table snapshots -> the filter needed to get the FULL table.
+# SP500 gotcha: an UNFILTERED /sp500 call silently returns only a trailing ~1 year (2,559 rows,
+# 2025-08-28 onward). Add date.gte and the same call returns 59,669 rows back to 1957-03-04.
+# Nothing in the response marks it as a default window, so the short answer looks complete —
+# this had truncated D-15's constituent history to one year. (Settles spec §8-3: the "1957 start"
+# claim is TRUE, but only with an explicit filter.) TICKERS is an entity master with no such
+# default; it returns all ~75k rows unfiltered.
+WHOLE_TABLES = {"TICKERS": {}, "SP500": {"date.gte": "1957-01-01"}}
 
 _ctx = None  # default = verified TLS; falls back to unverified if the CA bundle is missing
 _LOG_LINES = []
@@ -131,27 +155,32 @@ def _persist_log(kind, manifest=None):
 
 
 def get_json(url):
-    """GET url -> (status, parsed_json_or_None, headers_lower_dict). Retries transient errors + 429.
+    """GET url -> (status, parsed_json_or_None, headers_lower_dict, error_body). Retries transient
+    errors + 429.
 
-    On 429 we sleep for the RateLimit-Reset window (Sharadar's limit is per-900s, so a short backoff
+    On 429 we sleep to the x-ratelimit-reset instant (Sharadar's window is long, so a short backoff
     is pointless) and retry. TLS downgrades once if the CA bundle is missing (pod without certs).
+    `error_body` carries the vendor's JSON error text on a 4xx — api.sharadar.com explains exactly
+    which constraint was violated there ("ticker accepts at most 30 tickers per request"), and
+    losing it turns a fixable 400 into an opaque one.
     """
     global _ctx
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     attempt = 0
     while True:
         try:
-            with urllib.request.urlopen(req, timeout=120, context=_ctx) as r:
+            with urllib.request.urlopen(req, timeout=300, context=_ctx) as r:
                 headers = {k.lower(): v for k, v in r.headers.items()}
-                return r.status, json.loads(r.read().decode("utf-8")), headers
+                return r.status, json.loads(r.read().decode("utf-8")), headers, None
         except urllib.error.HTTPError as e:
             headers = {k.lower(): v for k, v in (e.headers.items() if e.headers else [])}
+            try:
+                body = e.read().decode("utf-8", "replace")[:400]
+            except Exception:
+                body = None
             if e.code == 429 and attempt < 6:
                 attempt += 1
-                try:
-                    wait = int(headers.get("ratelimit-reset")) + 2
-                except (TypeError, ValueError):
-                    wait = min(120, 30 * attempt)
+                wait = _reset_wait(headers)
                 log(f"     429 rate-limited — sleeping {wait}s for the window reset (attempt {attempt})")
                 time.sleep(wait)
                 continue
@@ -159,12 +188,16 @@ def get_json(url):
                 attempt += 1
                 time.sleep(2 * attempt)
                 continue
-            return e.code, None, headers
+            return e.code, None, headers, body
         except (ssl.SSLError, urllib.error.URLError, http.client.HTTPException,
                 ConnectionError, TimeoutError) as e:
             err = e if isinstance(e, ssl.SSLError) else getattr(e, "reason", e)
-            if _ctx is None and isinstance(err, ssl.SSLError):
-                print("WARN: TLS verification failed, retrying without verification", flush=True)
+            # Certificate-VERIFICATION failures only (image with no CA bundle) — not transient
+            # SSLErrors, which would otherwise leave api_key riding an unverified channel for the
+            # rest of the run. Logged via log() so it lands in the manifest, not just stdout.
+            if _ctx is None and isinstance(err, ssl.SSLCertVerificationError):
+                log("WARN: TLS certificate verification failed (no usable CA bundle) — "
+                    "retrying without verification for the rest of this run")
                 _ctx = ssl._create_unverified_context()
                 continue
             if attempt < 4:
@@ -174,36 +207,63 @@ def get_json(url):
             raise
 
 
+def _rl(headers, name):
+    """Read a rate-limit header. The API sends them x-prefixed (x-ratelimit-remaining); the
+    unprefixed spelling is accepted too so a vendor rename can't silently disable pacing."""
+    for k in (f"x-ratelimit-{name}", f"ratelimit-{name}"):
+        try:
+            return int(headers[k])
+        except (KeyError, TypeError, ValueError):
+            continue
+    return None
+
+
+def _reset_wait(headers):
+    """Seconds to sleep until the rate-limit window resets.
+
+    `x-ratelimit-reset` is a UNIX TIMESTAMP (e.g. 1786462532), NOT a delay — sleeping on it raw
+    would park the pod for ~56 years. Anything that looks like an epoch is converted to a delay;
+    a small value is taken as an already-relative delay. Always clamped to [1, 900]."""
+    v = _rl(headers, "reset")
+    if v is None:
+        return 60
+    wait = (v - time.time()) if v > 10_000_000 else v
+    return int(max(1, min(900, wait + 2)))
+
+
 def _pace(headers):
-    """Respect the ~500-req/900s limit: a small gap normally; sleep to the window reset when the
-    RateLimit-Remaining header says we're nearly out. Falls back to the fixed pace if headers absent."""
+    """Respect the request AND weighted budgets: a small gap normally; sleep to the window reset
+    when either x-ratelimit-remaining or x-ratelimit-weighted-remaining runs low. A whole-table
+    call costs 100 weighted units, so the weighted budget is what actually binds on big pulls."""
     if PACE_SEC > 0:
         time.sleep(PACE_SEC)
-    try:
-        remaining = int(headers.get("ratelimit-remaining"))
-    except (TypeError, ValueError):
-        return
-    if remaining <= RL_BUFFER:
-        try:
-            wait = int(headers.get("ratelimit-reset")) + 2
-        except (TypeError, ValueError):
-            wait = 60
-        log(f"     rate-limit: {remaining} req left — sleeping {wait}s for the window reset")
+    remaining = _rl(headers, "remaining")
+    weighted = _rl(headers, "weighted-remaining")
+    cost = _rl(headers, "cost") or 1
+    low = (remaining is not None and remaining <= RL_BUFFER) or \
+          (weighted is not None and weighted <= cost * RL_BUFFER)
+    if low:
+        wait = _reset_wait(headers)
+        log(f"     rate-limit: {remaining} req / {weighted} weighted left — sleeping {wait}s for the reset")
         time.sleep(wait)
 
 
 def _get(endpoint, params):
-    """GET {API}/{endpoint}?{params}+api_key+format+limit -> parsed JSON, raising on failure."""
+    """GET {API}/{endpoint}?{params}+api_key+format+limit -> parsed JSON, raising on failure.
+
+    A 4xx carries the vendor's own explanation of which constraint was violated; surface it in the
+    exception text instead of a bare status code."""
     q = dict(params, api_key=TOKEN, format="json", limit=LIMIT)
     url = f"{API}/{endpoint}?{urllib.parse.urlencode(q, safe=',')}"  # keep the ticker comma-list literal
-    status, payload, headers = get_json(url)
+    status, payload, headers, body = get_json(url)
     if status in (401, 403):
         raise RuntimeError(f"{status} — Sharadar key rejected for /{endpoint} "
                            f"(is SHARADAR_API_KEY a valid api.sharadar.com key with the bundle?)")
     if status == 404:
         raise RuntimeError(f"404 — no such endpoint /{endpoint}")
     if status != 200 or payload is None:
-        raise RuntimeError(f"unexpected response (status={status})")
+        detail = f" — {body.strip()}" if body else ""
+        raise RuntimeError(f"unexpected response (status={status}) from /{endpoint}{detail}")
     _pace(headers)
     return payload
 
@@ -214,15 +274,70 @@ def _rows(payload):
     return data if isinstance(data, list) else []
 
 
+def _fetch_bulk_zip(endpoint, years, dimension=None):
+    """`years=N` -> 302 -> CSV zip -> list of row dicts. urllib follows the redirect itself."""
+    url = f"{API}/{endpoint}?{urllib.parse.urlencode({'api_key': TOKEN, 'format': 'json', 'years': years})}"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=1800, context=_ctx) as r:
+        blob = r.read()
+    if blob[:2] != b"PK":
+        raise RuntimeError(f"bulk years={years} did not return a zip "
+                           f"({len(blob)} bytes, starts {blob[:40]!r})")
+    out = []
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+        name = z.namelist()[0]
+        with z.open(name) as f:
+            for row in csv.DictReader(io.TextIOWrapper(f, "utf-8")):
+                if dimension and row.get("dimension") != dimension:
+                    continue
+                out.append(row)
+    return out
+
+
+def _dump_gz(path, payload):
+    """Gzipped JSON — the whole-market SF1 set is ~122k rows x 112 columns; gzip keeps it ~40 MB."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".part"
+    with gzip.open(tmp, "wt", encoding="utf-8") as f:
+        json.dump(payload, f)
+    os.replace(tmp, path)
+
+
+def _ticker_batches(syms):
+    """Split the universe into comma-lists the API will accept: <= MAX_TICKERS_PER_CALL entries AND
+    <= MAX_TICKER_CHARS characters. Both caps are server-enforced (HTTP 400 past either), and the
+    character cap is the one a count-only split silently walks past on long symbols."""
+    batch, size = [], 0
+    for s in syms:
+        add = len(s) + (1 if batch else 0)
+        if batch and (len(batch) >= MAX_TICKERS_PER_CALL or size + add > MAX_TICKER_CHARS):
+            yield batch
+            batch, size = [], 0
+            add = len(s)
+        batch.append(s)
+        size += add
+    if batch:
+        yield batch
+
+
 def _fetch(endpoint, params, label=None):
-    """Single high-limit call (api.sharadar.com has no cursor). Returns (rows, truncated)."""
-    payload = _get(endpoint, params)
-    rows = _rows(payload)
-    count = payload.get("count")
-    truncated = isinstance(count, int) and count >= LIMIT
-    if STORE_LOGS:
-        log(f"     {endpoint} {label or ''}: {len(rows)} rows")
-    return rows, truncated
+    """Fetch every matching row, paging by `offset` past the server's ROW_CAP.
+
+    The server truncates any response at ROW_CAP rows however large a `limit` we ask for, so a
+    single call can never be trusted to be complete. We page until a short page arrives; MAX_PAGES
+    is a runaway backstop and is the ONLY condition that reports truncated=True."""
+    rows = []
+    for page in range(MAX_PAGES):
+        payload = _get(endpoint, dict(params, offset=page * ROW_CAP) if page else params)
+        got = _rows(payload)
+        rows += got
+        if len(got) < ROW_CAP:
+            if STORE_LOGS:
+                log(f"     {endpoint} {label or ''}: {len(rows)} rows"
+                    + (f" ({page + 1} pages)" if page else ""))
+            return rows, False
+    log(f"WARN {endpoint} {label or ''}: hit MAX_PAGES ({MAX_PAGES}) — rows may be truncated")
+    return rows, True
 
 
 # --- append-only merge (M1-01): dedup by the WHOLE row so a restated/adjusted row is kept as new ---
@@ -249,6 +364,33 @@ def _merge(existing, new):
 def _latest(rows, col):
     vals = [str(r.get(col))[:10] for r in rows if r.get(col)]
     return max(vals) if vals else None
+
+
+def _earliest(rows, col):
+    vals = [str(r.get(col))[:10] for r in rows if r.get(col)]
+    return min(vals) if vals else None
+
+
+def _window_path(table):
+    return os.path.join(DATA_DIR, table, "_window.json")
+
+
+def _read_window(table):
+    """The `from` date that produced the data on disk, or None if never recorded."""
+    try:
+        with open(_window_path(table)) as f:
+            v = json.load(f).get("from")
+        return v if isinstance(v, str) else None
+    except (FileNotFoundError, ValueError, AttributeError):
+        return None
+
+
+def _write_window(table, frm):
+    """Record the window a FULL pull covered, so a later widening is detected exactly rather than
+    guessed from row dates (see fetch_series)."""
+    if frm:
+        _dump_json(_window_path(table), {"from": frm, "table": table,
+                                         "recorded_at_utc": datetime.now(timezone.utc).isoformat()})
 
 
 def _group_by_ticker(rows):
@@ -285,9 +427,19 @@ def _write(out_path, data):
 
 # --- ticker normalization: config carries EODHD-style tickers (BRK-B); Sharadar uses dots (BRK.B) ---
 
-def _sharadar_ticker(t, cfg):
+def _sharadar_ticker(t, cfg, table=None):
+    """Config ticker -> Sharadar ticker.
+
+    `ticker_overrides` is TABLE-SCOPED (ticker_override_tables, default SF1 only). Sharadar files
+    FUNDAMENTALS under an issuer's primary share class — GOOG/FOX/NWS return 0 ARQ rows while
+    GOOGL/FOXA/NWSA are populated — but SEP and ACTIONS carry each class separately and correctly.
+    Applying the override to every table (as it first did) silently dropped GOOG/FOX/NWS from SEP
+    and ACTIONS entirely: their files froze at the retired 1-year window and GOOG's genuine 20:1
+    2022-07-18 split went missing from D-04. Verified live 2026-08-13: stocks/actions return rows
+    for all three; only fundamentals is empty."""
+    tables = cfg.get("ticker_override_tables") or ["SF1"]
     overrides = cfg.get("ticker_overrides") or {}
-    if t in overrides:
+    if t in overrides and (table is None or table in tables):
         return overrides[t]
     rep = cfg.get("ticker_replace")
     if isinstance(rep, list) and len(rep) == 2:
@@ -322,14 +474,15 @@ def main():
     retry_queue = []  # (index into results, attempt fn) per failed whole-table — end-of-run sweep
 
     def fetch_series(table):
-        """Pull a per-ticker table for the WHOLE universe in a handful of calls, then split into
-        per-ticker files. COLD (some ticker has no file): BATCH_SIZE-ticker multi-ticker calls over
-        the date window. WARM (every ticker already on disk): ONE whole-universe lastupdated/date
-        .gte call, filtered to the universe. Everything is merged append-only (M1-01)."""
+        """Pull a per-ticker table for the WHOLE universe, then split into per-ticker files.
+        COLD (some ticker has no file): multi-ticker calls over the date window, each capped at
+        30 tickers / 200 chars by _ticker_batches. WARM (every ticker already on disk): one
+        whole-universe lastupdated/date .gte pull (offset-paged), filtered to the universe.
+        Everything is merged append-only (M1-01)."""
         spec = PER_TICKER[table]
         endpoint = ENDPOINT[table]
         incr_col = spec["incr_col"]
-        syms = [_sharadar_ticker(t, cfg) for t in stocks]
+        syms = [_sharadar_ticker(t, cfg, table) for t in stocks]
         if not syms:
             return
         paths = {s: os.path.join(DATA_DIR, table, f"{s}.json") for s in syms}
@@ -351,36 +504,58 @@ def main():
         # WARM only if every ticker has data AND a usable watermark (else fall back to cold batches).
         warm = incremental and all(existing[s] for s in syms)
         watermark = None
+        frm = cfg.get(spec["from_key"]) or cfg.get("from")
         if warm:
             wms = [_latest(existing[s], incr_col) for s in syms]
             if any(w is None for w in wms):
                 warm = False
             else:
                 watermark = min(wms)
+        if warm and frm:
+            # WIDENING THE CONFIG WINDOW MUST ACTUALLY WIDEN IT. The warm path filters on
+            # `<incr_col>.gte=<newest seen>`, which can only ever move FORWARD — so moving
+            # `from`/`sf1_from` back in time would fetch nothing new and the operator's change
+            # would silently do nothing. (Seen live: widening sf1_from 2025-07-28 -> 2021-07-28
+            # left SF1 at 4 quarters/ticker.)
+            #
+            # Compare against the window we RECORDED, not against the oldest row we happen to
+            # hold. Inferring it from row dates looks equivalent and is not: SF1's oldest
+            # calendardate is 2021-09-30 (the first quarter-end at or after a 2021-07-28 start),
+            # so "from < oldest row" is true forever and every run re-pulled the whole 5 years
+            # instead of a top-up. Quarterly/event tables essentially never have a row exactly on
+            # the window start; only daily price tables do.
+            last = _read_window(table)
+            if last is None:
+                # Pre-marker volume: fall back to the row-date heuristic once, then the marker
+                # written below makes every later run incremental.
+                oldest = min((o for o in (_earliest(existing[s], spec["date_filter"]) for s in syms)
+                              if o), default=None)
+                stale = bool(oldest and frm < oldest)
+                why = f"no window marker (oldest row {oldest})"
+            else:
+                stale = frm < last
+                why = f"window widened {last} -> {frm}"
+            if stale:
+                log(f"     {table}: {why} — re-pulling the full window instead of an incremental top-up")
+                warm = False
         try:
             if warm:
                 base = dict(sf1_extra, **{f"{incr_col}.gte": watermark})
-                rows, truncated = _fetch(endpoint, base, label=f"bulk {incr_col}>={watermark}")
-                if truncated:
-                    log(f"WARN {table}: count hit LIMIT ({LIMIT}) — rows may be truncated")
+                rows, _ = _fetch(endpoint, base, label=f"bulk {incr_col}>={watermark}")
                 uni = set(syms)
                 by = _group_by_ticker([r for r in rows if r.get("ticker") in uni])
                 for s in syms:
                     persist(s, by.get(s, []), f"incr(bulk) {incr_col}>={watermark}")
             else:
-                frm = cfg.get(spec["from_key"]) or cfg.get("from")
-                for i in range(0, len(syms), BATCH_SIZE):
-                    batch = syms[i:i + BATCH_SIZE]
+                for n, batch in enumerate(_ticker_batches(syms), start=1):
                     base = dict(sf1_extra, ticker=",".join(batch))
                     if frm:
                         base[f"{spec['date_filter']}.gte"] = frm
-                    n = i // BATCH_SIZE + 1
-                    rows, truncated = _fetch(endpoint, base, label=f"batch {n} ({len(batch)} tickers)")
-                    if truncated:
-                        log(f"WARN {table} batch {n}: count hit LIMIT ({LIMIT}) — rows may be truncated")
+                    rows, _ = _fetch(endpoint, base, label=f"batch {n} ({len(batch)} tickers)")
                     by = _group_by_ticker(rows)
                     for s in batch:
                         persist(s, by.get(s, []), f"full {spec['date_filter']}>={frm}")
+                _write_window(table, frm)   # this run covered [frm, now] for every ticker
         except Exception as e:
             # a batch/bulk request itself failed -> record it for every ticker not already written
             log(f"FAIL {table:<14}: {type(e).__name__}: {e}")
@@ -408,9 +583,7 @@ def main():
                         entry.update(ok=True, count=n, added=0)
                         log(f"OK   {table:<14} ALL: {n} [fresh {age_days:.1f}d < {whole_refresh_days}d — skipped] -> {out}")
                         return entry
-                rows, truncated = _fetch(endpoint, {}, label="ALL")
-                if truncated:
-                    log(f"WARN {table}: count hit LIMIT ({LIMIT}) — rows may be truncated")
+                rows, _ = _fetch(endpoint, dict(WHOLE_TABLES.get(table) or {}), label="ALL")
                 _write(out, rows)
                 entry.update(ok=True, count=len(rows), added=len(rows))
                 log(f"OK   {table:<14} ALL: {len(rows)} [snapshot] -> {out}")
@@ -423,9 +596,58 @@ def main():
             retry_queue.append((len(results), attempt))
         results.append(entry)
 
+    def fetch_whole_market(table):
+        """SURVIVORSHIP-FREE pull: the same table with NO ticker filter, just a date range.
+
+        The per-ticker path above is bounded by the 503 CURRENT constituents, which is why ACTIONS
+        held exactly one `delisted` row — a name that has already left the index can never appear.
+        Spec §2 wants D-04 over "21k+ active+delisted tickers" and D-05 over "16k+ companies,
+        survivorship-bias-free"; G-01's last-trade return and the T-12 delisted fixture both need it.
+
+        Feasible because the retail API takes an unfiltered date-range query and pages by offset:
+        ACTIONS is ~49k rows/year and SF1 ARQ ~22k/year, so five years is a few paged calls each.
+        SEP is deliberately NOT offered here — whole-market daily prices would be ~63M rows, and
+        eod_bulk already supplies survivorship-free prices for the same universe.
+        """
+        spec = PER_TICKER[table]
+        frm = cfg.get(spec["from_key"]) or cfg.get("from")
+        out = os.path.join(DATA_DIR, table, "_ALL.json")
+        entry = {"symbol": f"{table}:_ALL", "dataset": f"{table}_whole", "ok": False,
+                 "count": 0, "added": 0, "error": None}
+        try:
+            # An unfiltered JSON query is silently capped at a ~2-year default window regardless of
+            # the .gte filter you pass (SF1 returned 21,781 rows / 2024-06-30 onward whatever the
+            # date). Deep history comes from the vendor's BULK path: `years=N` 302-redirects to a
+            # CSV zip. Measured: fundamentals-5Y.csv.zip is 118 MB, downloads in ~10 s, and yields
+            # 122,047 ARQ rows back to 2020-03-31 across 7,669 tickers — versus 503 ticker-filtered.
+            rows = _fetch_bulk_zip(ENDPOINT[table], WHOLE_MARKET_YEARS,
+                                   dimension if table == "SF1" else None)
+            out_gz = out + ".gz"
+            n_tick = len({r.get("ticker") for r in rows})
+            _dump_gz(out_gz, {"vendor": "Sharadar bulk", "table": table,
+                              "years": WHOLE_MARKET_YEARS,
+                              "dimension": dimension if table == "SF1" else None,
+                              "pulled_at_utc": datetime.now(timezone.utc).isoformat(),
+                              "n_rows": len(rows), "n_tickers": n_tick, "rows": rows})
+            entry.update(ok=True, count=len(rows), added=len(rows))
+            ds = sorted(str(r.get(spec["date_filter"]) or "")[:10] for r in rows if r.get(spec["date_filter"]))
+            log(f"OK   {table:<14} _ALL: {len(rows):,} rows across {n_tick:,} tickers "
+                f"[bulk years={WHOLE_MARKET_YEARS}] {ds[0] if ds else '-'}..{ds[-1] if ds else '-'} -> {out_gz}")
+        except Exception as e:
+            entry["error"] = f"{type(e).__name__}: {e}"
+            log(f"FAIL {table:<14} _ALL: {entry['error']}")
+        results.append(entry)
+
     # 1) per-ticker series (SEP / SF1 / ACTIONS) — batched over the universe, split to per-ticker files
     for table in tables:
         fetch_series(table)
+
+    # 1b) the same tables WITHOUT the universe filter, so delistings and departed names exist at all
+    for table in (cfg.get("whole_market_tables") or []):
+        if table in PER_TICKER:
+            fetch_whole_market(table)
+        else:
+            log(f"WARN whole_market_tables: {table} is not a per-ticker table — skipped")
 
     # 2) whole-table snapshots (TICKERS entity master, SP500 constituents) — survivorship-free
     for table in whole_tables:
@@ -470,7 +692,8 @@ def main():
         "incremental": incremental,
         "whole_refresh_days": whole_refresh_days,
         "pace_sec": PACE_SEC,
-        "batch_size": BATCH_SIZE,
+        "batch_size": MAX_TICKERS_PER_CALL,
+        "row_cap": ROW_CAP,
         "tables": tables,
         "whole_tables": whole_tables,
         "n_stocks": len(stocks),

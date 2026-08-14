@@ -1,0 +1,6 @@
+{
+  "_comment": "D-16 FinBERT weights for F9. `revision` is PINNED to a commit sha, not 'main': HuggingFace main moves, and scoring the same headline against two revisions gives two different F9 values, silently breaking G-10 reproducibility. Bump it deliberately; the manifest records the resolved sha for config_hash. flax/tf weights (~400 MB each) are skipped — F9 needs the PyTorch set only.",
+  "repo": "ProsusAI/finbert",
+  "revision": "4556d13015211d73dccd3fdd39d39232506f3e43",
+  "files": ["config.json", "pytorch_model.bin", "vocab.txt", "tokenizer_config.json", "special_tokens_map.json"]
+}

@@ -1,0 +1,6 @@
+{
+  "_comment": "D-11 / Q-001 NYSE sessions, the source of truth. `end` runs into the future on purpose: the t+h+1 vertical MOO must be scheduled against sessions that do not exist yet. Regenerating is free — re-run after every exchange_calendars upgrade and diff `package_version`.",
+  "calendars": ["XNYS"],
+  "start": "1999-01-01",
+  "end": "2029-12-31"
+}

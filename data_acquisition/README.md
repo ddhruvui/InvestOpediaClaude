@@ -234,3 +234,197 @@ data_tiingo/
 ├── _run.json                  run manifest (requests_used, deferred count, per-job results)
 └── logs/                      gated by STORE_LOGS (errors/crashes always logged)
 ```
+
+---
+
+# Borrow — D-10 (`scripts/launch.sh borrow`)
+
+`src/fetch_borrow.py` + `config/borrow.json` → `data_borrow/`. **No API key.** Two free sources,
+both verified live 2026-08-11.
+
+| Spec item | Source | Output | Notes |
+|---|---|---|---|
+| **D-10** borrow snapshot (all shortable names) | `ftp://shortstock@ftp2.interactivebrokers.com/usa.txt` | `data_borrow/USA/<DATE>T<HHMMSS>.json.gz` | ~19.7k rows/day, ~0.9 MB gzipped. One immutable file per vendor publication |
+| **D-10** borrow **history** | `https://www.iborrowdesk.com/api/ticker/<T>` | `data_borrow/history/<T>.json` | rolling ~1 y of daily rows, merged append-only by date |
+
+**Access gotchas that will cost you an afternoon if you rediscover them:**
+
+* The spec's `ftp3.interactivebrokers.com` **times out**. `ftp2` (and the unnumbered `ftp`) serve
+  the same file anonymously. `IBKR_FTP_HOSTS` is tried in order.
+* iBorrowDesk answers **only** on the `www.` host — the apex completes TLS then returns an empty
+  reply with no redirect — and **only** with a browser `User-Agent`; programmatic UAs get 403.
+* IBKR spells class shares with a **space** (`BRK B`, `BF B`); the parser normalises to the dash form.
+* The file is pipe-delimited with a `#BOF|date|time` header and a `#EOF` trailer. **A file without
+  `#EOF` is a truncated download and is not stored** — freezing a partial borrow snapshot is
+  unrecoverable in exactly the way G-05 warns about.
+* `FEERATE` is percent/year → `fee_bps_yr = FEERATE * 100`. Missing fees are stored as **NULL, not
+  50**: the GC-50 default is a modelling fallback, and baking it in here would make a guess
+  indistinguishable from a quote. Measured on the current universe: median **28.9 bps**, and only
+  6 of 502 names sit above the spec's 50 bps default.
+
+**This changes G-05.** The spec says borrow history "only accrues forward". iBorrowDesk's rolling
+~1-year window means a missed day is recoverable for ~12 months, and the whole pinned test window
+was backfillable on day one. The daily merge is still what turns a rolling window into permanent
+history — and the IBKR snapshot half genuinely has no history at all.
+
+---
+
+# Calendar — D-11 / Q-001 (`scripts/launch.sh calendar`)
+
+`src/fetch_calendar.py` + `config/calendar.json` → `data_calendar/XNYS.json`. Free, no key.
+**The only fetcher with a pip dependency** (`exchange_calendars`); `launch.sh` sets `PIP_PACKAGES`
+and `bootstrap.sh` installs it.
+
+Emits `sessions` (past **and future** — 852 sessions ahead of today, which is what the `t+h+1`
+vertical MOO has to be scheduled against), `early_closes`, `session_open_close`, and the
+`package_version` that produced them (the calendar is only reproducible alongside its version;
+feeds `config_hash`, G-10).
+
+`fetch.py` reads this file (`SESSIONS_PATH`) to drive the `eod_bulk` loop. Without it the loop
+falls back to Mon–Fri, which is how ten market-holiday day-files full of OTC/foreign rows ended up
+on the volume — EODHD *answers* on holidays (Labor Day 2025: 4,418 rows), so the price feed cannot
+tell you the exchange was shut. Those ten files are still there and should be deleted; every one
+is a non-session confirmed against XNYS.
+
+---
+
+# Pod logs
+
+Every pod tees its whole stdout to `_pod_logs/<UTC>-<script>-<podid>.log` on the volume. The pod
+deletes itself when it finishes, taking its container log with it, so without this a failure
+*before* the fetcher's own logging (bad `FETCH_SCRIPT`, failed pip install, unwritable `DATA_DIR`,
+an import error at module scope) leaves no trace at all — the pod just vanishes having written
+nothing.
+
+> **RunPod S3 quirk:** a non-recursive `aws s3 ls s3://<vol>/<prefix>/` can return **nothing** for a
+> prefix a pod created recently, while `--recursive` from the bucket root lists every key. Always
+> verify with `--recursive` before concluding a job wrote nothing. (`download.sh` already works
+> around the sibling flakiness in listing.)
+
+---
+
+# Reading this data correctly (before you build features on it)
+
+Five rules the raw files do not enforce. Each one has bitten this dataset already.
+
+**1. The session grid is `data_calendar/XNYS.json`, not the union of dates in the price files.**
+`eod_bulk/US/` currently holds **10 day-files for NYSE holidays** (written before the D-11 guard
+existed) containing only OTC/foreign rows — Labor Day 2025 has 4,418. They contain **zero** universe
+names, so they cannot corrupt a per-ticker panel, but a naive `glob + union of dates` invents ten
+phantom sessions. Filter every date against `sessions`, or delete those ten files.
+
+**2. Raw close: prefer Sharadar `SEP.closeunadj` (or Tiingo `close`) over EODHD `close`.**
+EODHD rewrites `close` retroactively after corporate actions — DD on 2025-07-28 reads 31.3937 from
+EODHD versus an actual print of 75.06 (Sharadar and Tiingo agree on 75.06). So `F_t =
+adjusted_close / close` off EODHD is wrong by ~2.4x for that name's entire pre-spinoff history.
+Affected in the current window: **DD** and **CMCSA** (both spinoffs), 183 of 126,814 compared
+closes breach 25 bps. EODHD's value is *breadth* (~45k tickers/day incl. delisted); Sharadar's is
+*correctness*.
+
+**3. `eod_bulk` day-files are NOT immutable.** The same date pulled at two times can differ:
+CMCSA 2025-07-28 was 33.53 in the file pulled 2026-07-28 and 31.4246 when re-pulled 2026-08-11.
+The resume logic ("skip any existing day-file") therefore freezes a **mix of vintages**. Treat a
+day-file as "EODHD's view as of its pull date", not as ground truth.
+
+**4. Sharadar keeps duplicate `(ticker, date)` rows on purpose** — that is M1-01 append-only, with
+restatements distinguished by `lastupdated`. AAPL's SEP file has 272 rows over 261 distinct dates.
+**SEP/SF1: dedupe to `max(lastupdated)` per key before use**; the extra rows are the audit trail,
+not the panel. For PIT correctness (T-11), SF1 must be filtered to rows whose `lastupdated` is
+`<= t`, not just `datekey <= t`.
+
+**5. Sharadar SF1/SEP/ACTIONS are ticker-filtered to the 503 *current* names — they are NOT
+survivorship-free.** The ACTIONS census contains **zero** `delisted` rows for exactly this reason.
+Survivorship-free sources on the volume today are `eod_bulk`, `TICKERS`, `SP500`, and
+`data/symbols/US.json`. Any universe construction or delisting analysis must come from those.
+
+**Delisting fixture (T-12):** `EA` stopped trading after 2026-08-05 and both EODHD and Sharadar
+agree — a ready-made real delisting to test against.
+
+
+---
+
+# Validation — D-12 / M1-04 + Q-004 (`scripts/launch.sh validate`)
+
+`src/validate.py` → `data_quality/`. No API calls, no credits, no key. **Run after the nightly
+`all`**, never inside it: it consumes the other jobs' output and `all` launches pods in parallel.
+
+    data_quality/quarantine.json   the M1-04 list a consumer should honour
+    data_quality/report.json       every check, with counts and offending keys
+
+**Checks:** cross-vendor close (EODHD vs Sharadar `closeunadj` vs Tiingo, >25 bps ⇒ quarantine),
+missing bars vs the D-11 calendar, non-session rows, duplicate `(ticker,date)`, split sanity,
+stale feeds, and ticker reuse.
+
+**Two judgement calls it encodes**, both learned the hard way:
+
+* *When-issued vs recycled symbol.* Rows before the entity master's `firstpricedate` are either a
+  few legitimate when-issued prints (GEV, CEG, VLTO, SOLV: 3–10 sessions immediately before the
+  listing, which Sharadar omits and EODHD keeps) or a block from a **different issuer** (TKO: 534
+  rows; SW: 339). The discriminator is the *gap* to the listing date, not the existence of early
+  rows. Only the latter is quarantined.
+* *Split sanity needs the ratio, not the move.* A 20%-move trigger fires on ordinary earnings gaps
+  — SMCI alone has 16 in five years — and flagged nine false positives (NFLX −35% on the subscriber
+  miss, APP +46% on earnings) simply because they landed near 2⁄3 or 1.5. Candidate ratios therefore
+  exclude everything inside [0.55, 1.9]: only moves a market essentially never makes are evidence of
+  a missing split.
+
+**`--repair`** fixes what can be fixed from data already on the volume: per-ticker `eod` holes
+filled from the corresponding `eod_bulk` day-file (EODHD's own two endpoints disagree — `eod/URI`
+was missing 2023-04-06 while `eod_bulk/2023-04-06` had it at 355.27, matching Sharadar exactly), and
+pre-listing rows from a recycled symbol dropped.
+
+> **Repairs to `data/` are re-applied, not permanent.** `eod` is a full refetch every run, so the
+> next EODHD pass restores the vendor's version. That is deliberate — the raw landing zone stays
+> vendor-faithful — but it means `validate --repair` belongs *after* each nightly run.
+> `quarantine.json` is the durable artefact; the §4 parse layer should consume it.
+
+**Current quarantine (34 tickers).** Six are systematic — EODHD's pre-spinoff `close` is rescaled,
+so use Sharadar `closeunadj` over these spans:
+
+| ticker | span | rows | worst |
+|---|---|---|---|
+| HON | 2021-07-28 → 2026-06-26 | 2,468 | 10,233 bps |
+| CMCSA | 2021-07-28 → 2026-01-02 | 2,228 | 670 bps |
+| DD | 2021-07-28 → 2025-10-31 | 2,144 | 13,909 bps |
+| LEN | 2021-07-28 → 2025-01-17 | 1,748 | 74 bps |
+| J | 2021-07-28 → 2024-09-27 | 1,596 | 87 bps |
+| LH | 2021-07-28 → 2023-06-30 | 970 | 1,640 bps |
+
+The other 26 are isolated single-day disagreements (71 rows total) — ordinary vendor glitches.
+
+
+---
+
+# M1 landing layer (`src/build_m1.py`)
+
+Raw vendor JSON → the M1 tables as Parquet. Needs pandas + pyarrow (the fetchers stay stdlib-only;
+this is not a fetcher, so it runs locally or anywhere with the volume mirrored).
+
+| output | rows built from the current volume |
+|---|---|
+| `raw_prices_eod/` (partitioned by year) | 628,270 — PK `(date, ticker)`, **0 duplicates** |
+| `fundamentals_pit.parquet` | 1,031,271 long-format rows, 97 items |
+| `corporate_actions.parquet` | 16,911 |
+| `adjustment_factors/` | 625,255 |
+| `borrow_fees.parquet` | 87,441 |
+| `entities.parquet`, `sessions.parquet` | 74,956 / 7,795 |
+| `qlib/<TICKER>.csv` | 503 — `date,open,close,high,low,volume,factor` |
+
+**It enforces the consumption rules instead of restating them.** Verified on the current data:
+
+* **Raw close provenance** — 622,723 rows take Sharadar `closeunadj`, 5,547 fall back to EODHD.
+  DD 2025-07-28 lands at the true **75.06**, not EODHD's retro-rescaled 31.39.
+* **Split vs spinoff** — 18 of EODHD's 73 "splits" retyped as `spinoff`, so Q-002 never treats a
+  spinoff as a share-count change.
+* **Vintages** — 980 (ticker, period) pairs carry more than one `lastupdated`, all preserved.
+* **permaticker** — 0 nulls (needs the dot/dash alias: Sharadar writes `BRK.B`, everything else `BRK-B`).
+
+> **The spec's fundamentals PK is wrong and this proves it.** §3 gives
+> `(ticker, fiscal_period, filing_datetime, item)`, but M1-01 in the same section mandates keeping
+> every restatement vintage — and **95,159 rows share that four-column key**, differing only by
+> `lastupdated`. The PK here is five columns; with `lastupdated` added it is unique (0 duplicates).
+> A T-11-correct read filters on `lastupdated <= t` **and** `filing_datetime <= t`.
+
+> **`quarantined=True` does not mean "unusable"** once rule 2 has run. It means the vendors
+> disagreed on that span and Sharadar's raw print was used. DD carries the flag *and* the correct
+> price. Only a row still sourced from EODHD inside a tainted span has its close dropped.

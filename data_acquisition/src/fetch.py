@@ -77,7 +77,38 @@ EOD_FIELDS = ("date", "open", "high", "low", "close", "adjusted_close", "volume"
 BULK_FIELDS = ("code", "date", "open", "high", "low", "close", "adjusted_close", "volume")  # + ticker key
 PAGE_SIZE = 1000   # EODHD list-endpoint max page
 MAX_PAGES = 100    # hard backstop so offset pagination can never loop forever
+# News is walked in descending date WINDOWS (see _fetch_news): each window is up to
+# MAX_PAGES * PAGE_SIZE rows, and a truncated window re-enters with to=<oldest row seen>.
+# 40 windows x 100k rows is far beyond any real ticker's multi-year archive.
+MAX_NEWS_WINDOWS = int(os.environ.get("MAX_NEWS_WINDOWS", "40"))
 CAL_CHUNK = 100    # symbols per calendar/earnings call — keeps the URL well under any length limit
+# D-11 session list written by fetch_calendar.py onto the same volume. Optional: when present,
+# eod_bulk probes ONLY real NYSE sessions. Without it we fall back to Mon-Fri, which is what put
+# ten holiday day-files (Labor Day, Thanksgiving, …) full of OTC/foreign rows on the volume —
+# EODHD answers on market holidays, so "the exchange was shut" is not something the price feed
+# can tell you. Missing file => fall back silently; the volume is cold on the very first run.
+SESSIONS_PATH = os.environ.get("SESSIONS_PATH", "/workspace/data_calendar/XNYS.json")
+# eod-bulk-last-day publishes the whole session at once ~15 min after the 20:00Z close; asked for
+# an in-progress date it returns 0 rows (verified live 2026-08-11 15:31Z). Belt and braces: never
+# even ask for TODAY before this UTC hour, so a vendor that starts serving a partial file cannot
+# get one frozen into the volume — the resume logic treats any existing day-file as final forever.
+BULK_TODAY_CUTOFF_UTC_HOUR = int(os.environ.get("BULK_TODAY_CUTOFF_UTC_HOUR", "21"))
+# A session whose file comes back with far fewer rows than a normal session is a partial
+# publication, not a quiet day. Don't freeze it; leave it for the next run.
+BULK_MIN_ROWS_FRAC = float(os.environ.get("BULK_MIN_ROWS_FRAC", "0.5"))
+# SETTLING WINDOW. A bulk day-file is NOT final on the evening of its session — EODHD keeps
+# revising it for days. Measured 2026-08-12 on the 2026-08-10 file: pulled ~19 h after the close it
+# had 44,767 rows; 34 h later the same date returned 50,368 (+5,601 codes, 5,563 of them ordinary
+# equity tickers) and 4,744 changed closes. For the 503-name universe the CLOSE damage is trivial
+# (5 sub-penny roundings) but VOLUME was revised on 458 of 502 names — understated in 98% of cases,
+# median 4.5%, p95 38%, max 67%, and 9% low in aggregate.
+#
+# That matters: volume drives F6 turnover and the blueprint's default
+# universe.mode = top1000_dollar_volume, so freezing evening volumes biases the universe itself.
+# A day-file is therefore re-pulled when it was WRITTEN within this many days of its own session
+# date. Keying on (mtime - session_date) rather than (today - session_date) also self-heals files
+# frozen by earlier runs, and costs nothing once a file has been fetched after it settled.
+BULK_RESETTLE_DAYS = int(os.environ.get("BULK_RESETTLE_DAYS", "5"))
 # Vendor 5xx blips run minutes, not the ~6s get_json's in-request retries cover — so first-pass
 # failures get one more attempt at end of run, after this pause (seconds; env-overridable).
 RETRY_SWEEP_DELAY = int(os.environ.get("RETRY_SWEEP_DELAY", "60"))
@@ -86,6 +117,7 @@ STORE_LOGS = os.environ.get("STORE_LOGS", "").strip().lower() in ("1", "true", "
 
 _ctx = None  # default = verified TLS; falls back to unverified if CA bundle is missing
 _LOG_LINES = []  # captured stdout, persisted to logs/ on success (if STORE_LOGS) or always on failure
+_FUND_CACHE = {}  # {symbol: fundamentals object} — one entry; shared by `fundamentals`+`estimates`
 
 
 def log(msg):
@@ -127,8 +159,14 @@ def get_json(url):
             # http.client.HTTPException covers RemoteDisconnected / IncompleteRead — common on long
             # news pagination where the server drops a connection mid-stream. Retry, don't fail the job.
             err = e if isinstance(e, ssl.SSLError) else getattr(e, "reason", e)
-            if _ctx is None and isinstance(err, ssl.SSLError):
-                print("WARN: TLS verification failed, retrying without verification", flush=True)
+            # Downgrade ONLY on a certificate-VERIFICATION failure (an image with no CA bundle),
+            # never on a transient ssl.SSLError such as SSLEOFError or "bad record mac" — those
+            # are common on long news pagination, and treating them the same would turn one flaky
+            # frame into an unverified channel carrying api_token for the rest of the run.
+            # Logged via log() so the downgrade reaches the run log and the manifest.
+            if _ctx is None and isinstance(err, ssl.SSLCertVerificationError):
+                log("WARN: TLS certificate verification failed (no usable CA bundle) — "
+                    "retrying without verification for the rest of this run")
                 _ctx = ssl._create_unverified_context()
                 continue  # one-time TLS downgrade — does not consume a retry attempt
             if attempt < 4:
@@ -201,6 +239,23 @@ def _fetch_eod_bulk_day(exchange, date):
     return [{k: row.get(k) for k in BULK_FIELDS} for row in payload]
 
 
+def _fetch_bulk_actions_day(exchange, date, kind):
+    """D-02/D-03 WHOLE-MARKET corporate actions for one session (~100 credits each).
+
+    The per-ticker splits/div pulls only ever cover the configured 503 names, while eod_bulk covers
+    ~50k tickers including delisted ones — so a universe computed from the bulk prices
+    (universe.mode = top1000_dollar_volume) had no split or dividend data for anything outside the
+    503. These day-files close that: every split/dividend the whole exchange printed that session.
+    Row shapes differ from the per-ticker feeds: splits give {code, date, split}, dividends give
+    {code, date, dividend, unadjustedValue, currency, declarationDate, recordDate, paymentDate,
+    period}."""
+    params = {"api_token": TOKEN, "fmt": "json", "date": date, "type": kind}
+    payload = _get(f"eod-bulk-last-day/{exchange}", params)
+    if not isinstance(payload, list):
+        raise RuntimeError(f"eod_bulk_actions[{kind}]: expected list")
+    return payload
+
+
 def _fetch_dividends(symbol, from_date):
     # D-03: ex-date, per-share value (EODHD exposes unadjustedValue on most names — kept as-is).
     params = {"api_token": TOKEN, "fmt": "json"}
@@ -227,32 +282,86 @@ def _fetch_estimates(symbol, from_date):
     # D-14: point-in-time analyst-estimate snapshot. EODHD only ever returns the CURRENT Trend
     # object, so we stamp each pull with its UTC date and append (M1-01 immutable) — history accrues
     # forward from go-live, one row per pull day (from_date is intentionally ignored).
-    payload = _get(f"fundamentals/{symbol}", {"api_token": TOKEN, "filter": "Earnings::Trend"})
+    #
+    # Served from the per-ticker fundamentals cache. `filter=Earnings::Trend` narrows the RESPONSE,
+    # not the PRICE: it is a fundamentals-class call and costs the full 10 credits (spec §4). Since
+    # config/tickers.json runs both `fundamentals` and `estimates` over the same 503 names, calling
+    # it separately billed 10,060 credits/run where 5,030 buys the identical bytes — verified live:
+    # fundamentals/AAPL.US?filter=Earnings::Trend == fundamentals/AAPL.US -> ["Earnings"]["Trend"].
+    payload = (_fundamentals(symbol).get("Earnings") or {}).get("Trend")
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return [{"date": stamp, "trend": payload}]
 
 
-def _fetch_news(symbol, from_date):
-    # D-08: paginated timestamped headlines. Depth is ~Dec-2020 onward (API launch).
-    base = {"api_token": TOKEN, "fmt": "json", "s": symbol}
-    if from_date:
-        base["from"] = from_date
-    rows, truncated = _paginate("news", base, label=symbol)
-    if truncated:
-        log(f"WARN news {symbol}: hit MAX_PAGES ({MAX_PAGES}) — older articles may be truncated")
-    return rows
+def _fetch_news(symbol, from_date, to_date=None):
+    """D-08: timestamped headlines, newest-first. Depth is ~Dec-2020 onward (API launch).
+
+    WINDOWED, not one flat offset run. EODHD returns newest-first, so a plain offset walk that
+    hits the MAX_PAGES * PAGE_SIZE ceiling (100,000 rows) drops the OLDEST articles in the window
+    — and the next run's watermark is max(stored date), so it asks `from=<newest>` and never goes
+    back for them. That hole is permanent and, worse, invisible.
+
+    This is not hypothetical headroom: NVDA already returns 71,619 rows for a ONE-year window
+    (MSFT 39,990, AAPL 37,290). Widening to the spec's multi-year backfill puts the busiest names
+    several times over the ceiling. So when a window truncates we re-enter with `to=<oldest row
+    fetched>` and keep walking backwards until a window comes back short."""
+    out, seen = [], set()
+    for window in range(1, MAX_NEWS_WINDOWS + 1):
+        base = {"api_token": TOKEN, "fmt": "json", "s": symbol}
+        if from_date:
+            base["from"] = from_date
+        if to_date:
+            base["to"] = to_date
+        rows, truncated = _paginate("news", base, label=f"{symbol} w{window}")
+        fresh = 0
+        oldest = None
+        for r in rows:
+            k = _news_key(r)
+            if k not in seen:
+                seen.add(k)
+                out.append(r)
+                fresh += 1
+            d = (r.get("date") or "")[:10]
+            if d and (oldest is None or d < oldest):
+                oldest = d
+        if not truncated:
+            return out
+        # Truncated: step the window back to the oldest row we actually received.
+        if oldest is None or oldest == to_date or fresh == 0:
+            # No progress — a single day exceeds the ceiling, or the vendor ignored `to`.
+            log(f"WARN news {symbol}: window stalled at to={to_date} after {len(out)} rows "
+                f"— older articles are NOT retrievable by this method")
+            return out
+        to_date = oldest
+    log(f"WARN news {symbol}: hit MAX_NEWS_WINDOWS ({MAX_NEWS_WINDOWS}) at {len(out)} rows "
+        f"(oldest reached {to_date}) — older articles may be truncated")
+    return out
 
 
 # --- snapshot fetchers (whole objects, always refetched) ----------------------------------------
+
+def _fundamentals(symbol):
+    """The 10-credit fundamentals object for `symbol`, fetched at most ONCE per ticker.
+
+    Cached rather than re-derived from disk on purpose: reading DATA_DIR/fundamentals/<T>.json
+    would couple `estimates` to a prior successful snapshot write and could serve a stale
+    prior-run object into today's PIT snapshot. The cache is keyed by symbol and cleared as the
+    per-ticker loop advances, so whichever of {fundamentals, estimates} runs first pays, the other
+    is free, and the order in `datasets` stops mattering."""
+    if symbol not in _FUND_CACHE:
+        payload = _get(f"fundamentals/{symbol}", {"api_token": TOKEN})
+        if not isinstance(payload, dict):
+            raise RuntimeError("fundamentals: expected object")
+        _FUND_CACHE.clear()          # one ticker in flight at a time — bound the 950 KB objects
+        _FUND_CACHE[symbol] = payload
+    return _FUND_CACHE[symbol]
+
 
 def fetch_fundamentals(symbol):
     # D-05/06 cross-check + D-07 Earnings::History. Stored lossless: the full nested object
     # (General/Highlights/Valuation/SharesStats/Earnings/Financials/...). Downstream PIT extraction
     # selects the blocks it needs; keeping it whole avoids silently dropping a field a model wants.
-    payload = _get(f"fundamentals/{symbol}", {"api_token": TOKEN})
-    if not isinstance(payload, dict):
-        raise RuntimeError("fundamentals: expected object")
-    return payload
+    return _fundamentals(symbol)
 
 
 def fetch_index_constituents(index_symbol):
@@ -311,12 +420,16 @@ def _estimates_key(r):
 # dataset -> (low_level_fetch, subdir, from_cfg_key, incremental_key_fn or None).
 # incremental_key_fn is set ONLY for append-only streams; None => always full refetch (small /
 # retroactively-revised: eod, dividends, splits).
+# dataset -> (low_level_fetch, subdir, from_cfg_key, incremental_key_fn, supports_backfill).
+# supports_backfill: the vendor can serve an OLDER window on request, so widening the config's
+# start date re-pulls the gap. False for `estimates`, whose history is our own pull log — there is
+# no earlier snapshot to go and get.
 SERIES = {
-    "eod":       (_fetch_eod,       None,         "from",      None),
-    "dividends": (_fetch_dividends, "dividends",  "from",      None),
-    "splits":    (_fetch_splits,    "splits",     "from",      None),
-    "estimates": (_fetch_estimates, "estimates",  "from",      _estimates_key),
-    "news":      (_fetch_news,      "news",       "news_from", _news_key),
+    "eod":       (_fetch_eod,       None,         "from",      None,            False),
+    "dividends": (_fetch_dividends, "dividends",  "from",      None,            False),
+    "splits":    (_fetch_splits,    "splits",     "from",      None,            False),
+    "estimates": (_fetch_estimates, "estimates",  "from",      _estimates_key,  False),
+    "news":      (_fetch_news,      "news",       "news_from", _news_key,       True),
 }
 # dataset -> (fetch(symbol), subdir, count_fn). Point-in-time objects, always refetched whole.
 SNAPSHOT = {
@@ -333,6 +446,11 @@ def _read_existing(path):
         return data if isinstance(data, list) else []
     except (FileNotFoundError, ValueError):
         return []
+
+
+def _oldest_date(rows):
+    dates = [(r.get("date") or "")[:10] for r in rows if r.get("date")]
+    return min(dates) if dates else None
 
 
 def _latest_date(rows):
@@ -366,6 +484,62 @@ def _write(out_path, data, indent=None):
     os.replace(tmp, out_path)
 
 
+def _load_sessions():
+    """D-11 session set from the volume, or None when fetch_calendar.py hasn't run yet."""
+    try:
+        with open(SESSIONS_PATH) as f:
+            payload = json.load(f)
+        sessions = set(payload.get("sessions") or [])
+        if sessions:
+            log(f"     eod_bulk: using D-11 session calendar {payload.get('calendar')} "
+                f"({len(sessions)} sessions, exchange_calendars {payload.get('package_version')})")
+            return sessions
+    except (FileNotFoundError, ValueError, AttributeError):
+        pass
+    log(f"     eod_bulk: no D-11 calendar at {SESSIONS_PATH} — falling back to Mon-Fri "
+        f"(market holidays will be probed and may store non-session files)")
+    return None
+
+
+def _bulk_unsettled(path, session_date):
+    """True if this day-file was written before its session had settled, so it must be re-pulled.
+
+    Compares the file's MTIME against its own session date (not against today): a file fetched
+    2 days after its session is suspect forever until re-fetched later, which is what lets this
+    repair day-files frozen by earlier runs instead of only protecting future ones."""
+    if BULK_RESETTLE_DAYS <= 0:
+        return False
+    try:
+        written = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc).date()
+    except OSError:
+        return False
+    return (written - session_date).days < BULK_RESETTLE_DAYS
+
+
+def _bulk_row_floor(bulk_dir):
+    """Median row count of already-stored SESSION day-files, times BULK_MIN_ROWS_FRAC.
+
+    Used to reject a partial publication. Returns 0 (no floor) until enough files exist to make a
+    median meaningful — a cold backfill must not refuse its own first days."""
+    try:
+        names = [n for n in os.listdir(bulk_dir) if n.endswith(".json")]
+    except OSError:
+        return 0
+    counts = []
+    for n in sorted(names, reverse=True)[:20]:
+        try:
+            with open(os.path.join(bulk_dir, n)) as f:
+                rows = json.load(f)
+            if isinstance(rows, list) and len(rows) > 1000:  # skip cached holiday/empty files
+                counts.append(len(rows))
+        except (OSError, ValueError):
+            continue
+    if len(counts) < 3:
+        return 0
+    counts.sort()
+    return int(counts[len(counts) // 2] * BULK_MIN_ROWS_FRAC)
+
+
 def main():
     if not TOKEN:
         print("FATAL: EODHD_API_TOKEN not set", file=sys.stderr)
@@ -394,7 +568,7 @@ def main():
     results = []
     retry_queue = []  # (index into results, attempt fn) per first-pass failure — end-of-run sweep
 
-    def record_series(dataset, symbol, out, low_fetch, default_from, incr_key):
+    def record_series(dataset, symbol, out, low_fetch, default_from, incr_key, backfill=False):
         """Full refetch, or — for append-only streams when incremental — fetch the delta and merge."""
         def attempt():
             entry = {"symbol": symbol, "dataset": dataset, "ok": False, "count": 0, "added": 0, "error": None}
@@ -402,8 +576,18 @@ def main():
                 existing = _read_existing(out) if (incremental and incr_key) else []
                 if existing:
                     since = _latest_date(existing) or default_from
-                    merged, added = _merge(existing, low_fetch(symbol, since), incr_key)
+                    new = low_fetch(symbol, since)
+                    # WIDENING THE WINDOW MUST ACTUALLY WIDEN IT. The tail watermark only ever
+                    # moves forward, so if the config's start date is now EARLIER than the oldest
+                    # row on disk, an incremental run would fetch only the new tail and silently
+                    # ignore the extra history the operator just asked for — the config changes and
+                    # nothing happens. Detect that gap and pull it too.
+                    oldest = _oldest_date(existing)
                     mode = f"incr≥{since}"
+                    if backfill and default_from and oldest and default_from < oldest:
+                        new += low_fetch(symbol, default_from, to_date=oldest)
+                        mode = f"incr≥{since} +backfill {default_from}..{oldest}"
+                    merged, added = _merge(existing, new, incr_key)
                 else:
                     new = low_fetch(symbol, default_from)
                     merged, added = _merge([], new, incr_key) if incr_key else (new, len(new))
@@ -443,9 +627,10 @@ def main():
         symbol = f"{ticker}.{exchange}"
         for ds in datasets:
             if ds in SERIES:
-                low, subdir, from_key, incr_key = SERIES[ds]
+                low, subdir, from_key, incr_key, backfill = SERIES[ds]
                 out = os.path.join(DATA_DIR, subdir, f"{ticker}.json") if subdir else os.path.join(DATA_DIR, f"{ticker}.json")
-                record_series(ds, symbol, out, low, cfg.get(from_key, cfg.get("from")), incr_key)
+                record_series(ds, symbol, out, low, cfg.get(from_key, cfg.get("from")), incr_key,
+                              backfill)
             else:
                 fetch, subdir, count_fn = SNAPSHOT[ds]
                 out = os.path.join(DATA_DIR, subdir, f"{ticker}.json")
@@ -478,20 +663,39 @@ def main():
         out = os.path.join(DATA_DIR, "symbols", f"{code}.json")
         record_snapshot("symbol_list", code, out, lambda code=code: fetch_symbol_list(code))
 
-    # 6) forward earnings calendar for the universe (D-07 upcoming snapshot)
+    # 6) forward earnings calendar for the universe (D-07 upcoming).
+    #    APPEND-ONLY, one dated file per pull (M1-01): F8's `days_to_earnings` at time t must use
+    #    the calendar AS KNOWN AT t. A single overwritten upcoming.json only ever holds today's
+    #    view, so a backtest reading it would see announcement dates that were published after t —
+    #    look-ahead, and the silent kind. upcoming.json is still written as a "latest" convenience
+    #    copy; the dated files under earnings/upcoming/ are the point-in-time record.
     if earnings_upcoming and stocks:
         symbols = [f"{t}.{exchange}" for t in stocks]
         today = datetime.now(timezone.utc).date()
         frm = today.isoformat()
         to = (today + timedelta(days=earnings_days)).isoformat()
-        out = os.path.join(DATA_DIR, "earnings", "upcoming.json")
-        record_snapshot("earnings_upcoming", f"{len(symbols)} symbols {frm}..{to}", out,
-                        lambda: fetch_earnings_upcoming(symbols, frm, to))
+        dated = os.path.join(DATA_DIR, "earnings", "upcoming", f"{frm}.json")
+        latest = os.path.join(DATA_DIR, "earnings", "upcoming.json")
+
+        def _fetch_upcoming():
+            rows = fetch_earnings_upcoming(symbols, frm, to)
+            payload = {"pulled_at_utc": datetime.now(timezone.utc).isoformat(),
+                       "vendor": "EODHD", "source_endpoint": f"{API}/calendar/earnings",
+                       "spec_item": "D-07", "from": frm, "to": to,
+                       "n_symbols": len(symbols), "earnings": rows}
+            _write(latest, payload)
+            return payload
+
+        record_snapshot("earnings_upcoming", f"{len(symbols)} symbols {frm}..{to}", dated,
+                        _fetch_upcoming, count_fn=lambda d: len(d.get("earnings") or []))
 
     # 7) D-01 whole-exchange bulk backfill (survivorship-bias-free; INCLUDES delisted tickers).
     #    Date-partitioned: one file per trading day = every ticker. The volume persists, so each run
     #    resumes by SKIPPING day-files already present, newest-first, bounded by max_days_per_run to
     #    stay under the 100k-credit/day cap — a cold 2000→now backfill completes over several runs.
+    # Shared by both bulk blocks; hoisted so eod_bulk_actions works with eod_bulk disabled.
+    now_utc = datetime.now(timezone.utc)
+    today_utc = now_utc.date()
     bulk = cfg.get("eod_bulk") or {}
     if bulk.get("enabled"):
         bex = bulk.get("exchange", exchange)
@@ -499,29 +703,48 @@ def main():
         bend = (datetime.strptime(bulk["to"], "%Y-%m-%d").date() if bulk.get("to")
                 else datetime.now(timezone.utc).date())
         max_days = int(bulk.get("max_days_per_run", 500))
-        today_utc = datetime.now(timezone.utc).date()
         entry = {"symbol": f"{bex} bulk {bstart}..{bend}", "dataset": "eod_bulk",
                  "ok": True, "count": 0, "added": 0, "error": None}
-        fetched = skipped = consec_fail = 0
+        bulk_dir = os.path.join(DATA_DIR, "eod_bulk", bex)
+        sessions = _load_sessions()
+        row_floor = _bulk_row_floor(bulk_dir)
+        fetched = skipped = consec_fail = nonsession = deferred = 0
         more = False
         d = bend
         while d >= bstart:
-            if d.weekday() < 5:  # Mon-Fri only; weekends are non-sessions (no call, no credit spent)
-                out = os.path.join(DATA_DIR, "eod_bulk", bex, f"{d.isoformat()}.json")
-                if os.path.exists(out):
+            iso = d.isoformat()
+            # Real NYSE sessions only when the D-11 calendar is available; Mon-Fri otherwise.
+            is_session = (iso in sessions) if sessions is not None else (d.weekday() < 5)
+            if is_session:
+                out = os.path.join(bulk_dir, f"{iso}.json")
+                if os.path.exists(out) and not _bulk_unsettled(out, d):
                     skipped += 1
+                elif d == today_utc and now_utc.hour < BULK_TODAY_CUTOFF_UTC_HOUR:
+                    # Today's session hasn't settled — don't spend the credit, don't risk freezing
+                    # a partial file. Tomorrow's run (or a post-cutoff re-run) picks it up.
+                    deferred += 1
+                    more = True
                 elif fetched >= max_days:
                     more = True
                     break  # per-run budget spent; a later run resumes from bend, skipping what's done
                 else:
                     try:
-                        rows = _fetch_eod_bulk_day(bex, d.isoformat())
+                        rows = _fetch_eod_bulk_day(bex, iso)
                         consec_fail = 0
-                        if rows:
+                        if rows and row_floor and len(rows) < row_floor:
+                            # Partial publication: a session file this short is not a quiet day.
+                            # Freezing it would be permanent (resume skips any existing file).
+                            log(f"WARN eod_bulk {bex} {iso}: only {len(rows)} rows "
+                                f"(< floor {row_floor}) — looks partial, not storing; retry next run")
+                            deferred += 1
+                            more = True
+                        elif rows:
                             _write(out, rows); fetched += 1
                         elif (today_utc - d).days > 5:
-                            _write(out, rows); fetched += 1  # confirmed holiday — cache [] so we never re-probe
-                        # else: recent empty day (not yet posted / just-closed) — leave unwritten, retry next run
+                            _write(out, rows); fetched += 1  # settled no-data day — cache [] so we never re-probe
+                        else:
+                            deferred += 1
+                            more = True  # recent empty day (not yet posted) — retry next run
                     except Exception as e:
                         consec_fail += 1
                         more = True
@@ -530,16 +753,78 @@ def main():
                                               f"(likely 100k/day credit cap): {type(e).__name__}: {e}")
                             log(f"WARN eod_bulk {bex}: {entry['error']} — re-run to resume")
                             break
+            elif sessions is not None and d.weekday() < 5:
+                nonsession += 1  # weekday the exchange was shut — no call, no credit, no phantom file
             d -= timedelta(days=1)
-        entry.update(count=fetched, added=fetched)
-        # Bulk is a long-horizon, resumable backfill: it stays NON-FATAL (ok=True) so a run capped
-        # after the per-ticker pass isn't marked FAILED for merely deferring backfill work. A genuine
-        # auth/endpoint break would already fail the per-ticker jobs (they run first); the `error`
-        # field + WARN log keep a stalled backfill visible in the manifest.
+        entry.update(count=fetched, added=fetched, deferred=deferred,
+                     non_sessions_skipped=nonsession, row_floor=row_floor)
+        # Bulk is a long-horizon, resumable backfill, so merely DEFERRING work (per-run cap spent,
+        # today not settled, a recent day not yet published) stays NON-FATAL — a run must not be
+        # marked FAILED for pacing itself. But a run that BAILED on consecutive errors is a real
+        # break (bulk not activated on the plan — §8-4 — a revoked token, or the 100k/day cap) and
+        # must fail the run: leaving it ok=True meant a completely dead bulk endpoint reported
+        # success every day while the price backfill silently stopped advancing.
+        # ...but only when the run made NO progress. Hitting the 100k/day cap partway through a
+        # multi-day backfill sets the same `error` and is entirely normal — failing the run every
+        # day for the duration of a planned backfill would train you to ignore the flag. Zero
+        # day-files plus consecutive errors is the shape of a genuine break.
+        if entry["error"] and fetched == 0:
+            entry["ok"] = False
         results.append(entry)
         status = f"~{d.isoformat()}+ remaining, re-run to continue" if more else "complete"
-        log(f"OK   {'eod_bulk':<18} {bex}: +{fetched} day-files (skipped {skipped} existing; {status})"
-            f" -> {os.path.join(DATA_DIR, 'eod_bulk', bex)}/")
+        log(f"OK   {'eod_bulk':<18} {bex}: +{fetched} day-files (skipped {skipped} existing, "
+            f"{nonsession} non-sessions, {deferred} deferred; {status}) -> {bulk_dir}/")
+
+    # 7b) D-02/D-03 whole-market corporate actions, date-partitioned like eod_bulk.
+    #     Separate `from` because the credit profile is different: 200/session (splits+dividends)
+    #     on top of eod_bulk's 100, so a full 5-year backfill is ~253k credits / 3 days of cap.
+    #     Defaults to forward-only from `from` — the per-ticker feeds already cover the 503 names
+    #     historically; what was missing is the rest of the bulk universe. Widen deliberately.
+    bulk_act = cfg.get("eod_bulk_actions") or {}
+    if bulk_act.get("enabled"):
+        bex = bulk_act.get("exchange", exchange)
+        astart = datetime.strptime(bulk_act.get("from") or cfg.get("from") or "2000-01-01",
+                                   "%Y-%m-%d").date()
+        aend = (datetime.strptime(bulk_act["to"], "%Y-%m-%d").date() if bulk_act.get("to")
+                else datetime.now(timezone.utc).date())
+        amax = int(bulk_act.get("max_days_per_run", 60))
+        kinds = bulk_act.get("types") or ["splits", "dividends"]
+        sessions_a = _load_sessions()
+        entry = {"symbol": f"{bex} bulk-actions {astart}..{aend}", "dataset": "eod_bulk_actions",
+                 "ok": True, "count": 0, "added": 0, "error": None}
+        got = askip = adefer = 0
+        d = aend
+        while d >= astart and got < amax:
+            iso = d.isoformat()
+            is_sess = (iso in sessions_a) if sessions_a is not None else (d.weekday() < 5)
+            if is_sess:
+                if d == today_utc and now_utc.hour < BULK_TODAY_CUTOFF_UTC_HOUR:
+                    adefer += 1
+                else:
+                    for kind in kinds:
+                        out = os.path.join(DATA_DIR, "eod_bulk_actions", bex, kind, f"{iso}.json")
+                        if os.path.exists(out):
+                            askip += 1
+                            continue
+                        try:
+                            rows = _fetch_bulk_actions_day(bex, iso, kind)
+                            # An action-free session is a real answer, so [] is cached — unlike
+                            # eod_bulk, where an empty price file means "not published yet".
+                            _write(out, rows)
+                            got += 1
+                        except Exception as e:
+                            entry["error"] = f"{type(e).__name__}: {e}"
+                            log(f"WARN eod_bulk_actions {kind} {iso}: {entry['error']}")
+                            got = amax
+                            break
+            d -= timedelta(days=1)
+        entry.update(count=got, added=got, deferred=adefer)
+        if entry["error"] and got == 0:
+            entry["ok"] = False
+        results.append(entry)
+        log(f"OK   {'eod_bulk_actions':<18} {bex}: +{got} day-file(s) over {kinds} "
+            f"(skipped {askip} existing, {adefer} deferred) -> "
+            f"{os.path.join(DATA_DIR, 'eod_bulk_actions', bex)}/")
 
     # End-of-run retry sweep: each first-pass failure gets one fresh attempt before the run is
     # judged. record_series/record_snapshot are idempotent (atomic writes, incremental re-reads

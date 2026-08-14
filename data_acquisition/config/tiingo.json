@@ -1,7 +1,7 @@
 {
-  "from": "2025-07-28",
+  "from": "2021-07-28",
   "news_from": "2025-07-28",
-  "market_from": "2025-07-28",
+  "market_from": "2000-01-01",
   "incremental": true,
   "datasets": [
     "prices"

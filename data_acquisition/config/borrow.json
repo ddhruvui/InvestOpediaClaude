@@ -1,0 +1,9 @@
+{
+  "_comment": "D-10 borrow fees/availability. TWO sources. (1) IBKR usa.txt: today's indicative snapshot for ALL ~19.7k shortable names — the whole file is stored, not a universe slice, because universe membership is recomputed over time and a snapshot missed is a snapshot gone. (2) iBorrowDesk: a rolling ~1-year DAILY history per ticker, merged append-only so the rolling window accretes into permanent history. Source 2 softens spec G-05 — borrow history is NOT purely forward-accruing after all.",
+  "countries": ["usa"],
+  "iborrowdesk": {
+    "enabled": true,
+    "_stocks_from": "universe is shared with the EODHD config rather than duplicated here; one request per ticker at iborrowdesk_pace_sec, so 503 names take ~9 min",
+    "stocks_from": "tickers.json"
+  }
+}

@@ -1,8 +1,8 @@
 {
   "exchange": "US",
-  "from": "2025-07-28",
-  "news_from": "2025-07-28",
-  "market_from": "2025-07-28",
+  "from": "2021-07-28",
+  "news_from": "2020-12-01",
+  "market_from": "2000-01-01",
   "incremental": true,
   "earnings_upcoming": true,
   "earnings_calendar_days": 90,
@@ -537,8 +537,20 @@
   "eod_bulk": {
     "enabled": true,
     "exchange": "US",
-    "from": "2025-07-28",
+    "from": "2021-07-28",
     "to": null,
-    "max_days_per_run": 500
+    "max_days_per_run": 600
+  },
+  "eod_bulk_actions": {
+    "_comment": "D-02/D-03 whole-market. eod_bulk covers ~50k tickers but the per-ticker splits/div feeds only cover the 503, so anything the universe screen picks up outside that list had no adjustment data. 200 credits/session, so `from` is separate and starts modest \u2014 widen deliberately (a full 5y backfill is ~253k credits).",
+    "enabled": true,
+    "exchange": "US",
+    "from": "2026-06-01",
+    "to": null,
+    "types": [
+      "splits",
+      "dividends"
+    ],
+    "max_days_per_run": 60
   }
 }

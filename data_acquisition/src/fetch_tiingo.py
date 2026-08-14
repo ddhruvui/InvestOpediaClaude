@@ -295,11 +295,24 @@ def _write(out_path, data, indent=None):
     os.replace(tmp, out_path)
 
 
-def _fresh(path, skip_fresh_days):
-    """True if the file exists and was refreshed within skip_fresh_days (resume across paced runs)."""
+def _fresh(path, skip_fresh_days, want_from=None):
+    """True if the file exists and was refreshed within skip_fresh_days (resume across paced runs).
+
+    `want_from` closes a trap: freshness is measured by MTIME, so a file written moments ago with
+    a NARROWER window still looks fresh and gets skipped. Widening `from` in the config would then
+    do nothing for skip_fresh_days (5 by default) — the operator changes the window, the next run
+    reports "fresh — skipped" for every ticker, and the extra history never arrives. If the stored
+    rows start later than the window now asks for, the file is stale no matter how new it is."""
     if skip_fresh_days <= 0 or not os.path.exists(path):
         return False
-    return (time.time() - os.path.getmtime(path)) / 86400.0 < skip_fresh_days
+    if (time.time() - os.path.getmtime(path)) / 86400.0 >= skip_fresh_days:
+        return False
+    if want_from:
+        rows = _read_existing(path)
+        dates = [str(r.get("date"))[:10] for r in rows if isinstance(r, dict) and r.get("date")]
+        if dates and min(dates) > want_from:
+            return False
+    return True
 
 
 def main():
@@ -327,13 +340,13 @@ def main():
     results = []
     retry_queue = []  # (index into results, attempt fn) per first-pass failure — end-of-run sweep
 
-    def record(dataset, symbol, out, job, refetch_whole=True):
+    def record(dataset, symbol, out, job, refetch_whole=True, want_from=None):
         """Run one job. skip_fresh_days short-circuits full-refetch jobs; BudgetExceeded defers."""
         def attempt():
             entry = {"symbol": symbol, "dataset": dataset, "ok": False, "count": 0, "added": 0,
                      "deferred": False, "error": None}
             try:
-                if refetch_whole and _fresh(out, skip_fresh_days):
+                if refetch_whole and _fresh(out, skip_fresh_days, want_from):
                     n = len(_read_existing(out))
                     entry.update(ok=True, count=n)
                     log(f"OK   {dataset:<10} {symbol}: {n} [fresh < {skip_fresh_days}d — skipped] -> {out}")
@@ -383,7 +396,8 @@ def main():
     #    per-ticker budget/symbol cap starve it)
     for sym in market:
         out = os.path.join(DATA_DIR, "market", f"{sym}.json")
-        record("market", sym, out, lambda sym=sym: prices_job(sym, cfg.get("market_from", cfg.get("from"))))
+        record("market", sym, out, lambda sym=sym: prices_job(sym, cfg.get("market_from", cfg.get("from"))),
+               want_from=cfg.get("market_from", cfg.get("from")))
 
     # 2) per-equity datasets
     for ticker in ordered:
@@ -391,7 +405,8 @@ def main():
         for ds in datasets:
             if ds == "prices":
                 out = os.path.join(DATA_DIR, f"{ticker}.json")
-                record(ds, ticker, out, lambda t=ticker, k=tok: prices_job(t, cfg.get("from"), k))
+                record(ds, ticker, out, lambda t=ticker, k=tok: prices_job(t, cfg.get("from"), k),
+                       want_from=cfg.get("from") if ds == "prices" else None)
             elif ds == "metadata":
                 out = os.path.join(DATA_DIR, "metadata", f"{ticker}.json")
                 record(ds, ticker, out,

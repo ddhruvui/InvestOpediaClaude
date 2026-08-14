@@ -4,9 +4,18 @@
 #   scripts/launch.sh eodhd      # same as above
 #   scripts/launch.sh nasdaq     # Sharadar/Nasdaq Data Link -> src/fetch_nasdaq.py + config/sharadar.json
 #   scripts/launch.sh tiingo     # Tiingo (tertiary cross-check) -> src/fetch_tiingo.py + config/tiingo.json
-#   scripts/launch.sh all        # the DAILY ROUTINE: eodhd + nasdaq + tiingo, one pod each. Tiingo's
-#                                # skip_fresh_days makes its warm runs near-free (fresh files skipped,
-#                                # budget overruns defer), so daily inclusion costs ~nothing.
+#   scripts/launch.sh borrow     # D-10 IBKR borrow fees -> src/fetch_borrow.py + config/borrow.json
+#   scripts/launch.sh calendar   # D-11 NYSE sessions (source of truth) -> src/fetch_calendar.py
+#   scripts/launch.sh finbert    # D-16 FinBERT weights at a pinned sha -> src/fetch_finbert.py
+#   scripts/launch.sh validate   # D-12/M1-04 cross-vendor check + Q-004 + repair -> src/validate.py
+#                                # NOT part of `all`: it must run AFTER the eodhd pass, and `all`
+#                                # launches pods in parallel. Reads the volume only — no API calls,
+#                                # no credits. Idempotent, so re-running is always safe.
+#   scripts/launch.sh all        # the DAILY ROUTINE: eodhd + nasdaq + tiingo + borrow + calendar.
+#                                # Tiingo's skip_fresh_days makes its warm runs near-free (fresh files
+#                                # skipped, budget overruns defer), so daily inclusion costs ~nothing.
+#                                # borrow needs no key and finishes in seconds, but it is the one job
+#                                # whose MISSED DAYS ARE UNRECOVERABLE (spec G-05) — never drop it.
 #
 # For each requested vendor it (1) uploads that fetcher + its config to the network volume (code/),
 # then (2) creates a CPU pod (pinned to the volume's datacenter) that runs the fetcher and
@@ -17,12 +26,16 @@
 . "$(dirname "$0")/_common.sh"
 
 case "${1:-eodhd}" in
-  all)            VENDORS="eodhd nasdaq tiingo" ;;
+  all)            VENDORS="eodhd nasdaq tiingo borrow calendar finbert" ;;
   eodhd)          VENDORS="eodhd" ;;
   nasdaq|sharadar) VENDORS="nasdaq" ;;
   tiingo)         VENDORS="tiingo" ;;
+  borrow|ibkr)    VENDORS="borrow" ;;
+  calendar)       VENDORS="calendar" ;;
+  finbert)        VENDORS="finbert" ;;
+  validate|qa)    VENDORS="validate" ;;
   *)
-    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, all)" >&2; exit 2 ;;
+    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, borrow, calendar, finbert, validate, all)" >&2; exit 2 ;;
 esac
 : "${RUNPOD_API_KEY:?account rpa_ key, set in runpod/.env}"
 
@@ -44,17 +57,37 @@ RUNNING_PODS=$(curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
   -H "Authorization: Bearer ${RUNPOD_API_KEY}" 2>/dev/null) || RUNNING_PODS=""
 
 launch_vendor() {
-  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL
+  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL DATA_SUBDIR
   case "$VENDOR" in
     eodhd)
-      FETCH_SCRIPT="fetch.py";        CONFIG_FILE="tickers.json"
+      FETCH_SCRIPT="fetch.py";        CONFIG_FILE="tickers.json";  DATA_SUBDIR="data"
       TOKEN_VAR="EODHD_API_TOKEN";    TOKEN_VAL="${EODHD_API_TOKEN:-}" ;;
     nasdaq)
-      FETCH_SCRIPT="fetch_nasdaq.py"; CONFIG_FILE="sharadar.json"
+      FETCH_SCRIPT="fetch_nasdaq.py"; CONFIG_FILE="sharadar.json"; DATA_SUBDIR="data_nasdaq"
       TOKEN_VAR="SHARADAR_API_KEY";   TOKEN_VAL="${SHARADAR_API_KEY:-${NASDAQ_DATA_LINK_API_KEY:-}}" ;;
     tiingo)
-      FETCH_SCRIPT="fetch_tiingo.py"; CONFIG_FILE="tiingo.json"
+      FETCH_SCRIPT="fetch_tiingo.py"; CONFIG_FILE="tiingo.json";   DATA_SUBDIR="data_tiingo"
       TOKEN_VAR="TIINGO_API_TOKEN";   TOKEN_VAL="${TIINGO_API_TOKEN:-}" ;;
+    borrow)
+      # No vendor key: the IBKR short-stock file is anonymous FTP. TOKEN_VAR is passed through as a
+      # harmless empty env var so the payload shape stays identical across vendors.
+      FETCH_SCRIPT="fetch_borrow.py"; CONFIG_FILE="borrow.json";   DATA_SUBDIR="data_borrow"
+      TOKEN_VAR="IBKR_FTP_USER";      TOKEN_VAL="${IBKR_FTP_USER:-shortstock}" ;;
+    calendar)
+      # The only fetcher with a pip dep: exchange_calendars (D-11 needs FUTURE sessions).
+      FETCH_SCRIPT="fetch_calendar.py"; CONFIG_FILE="calendar.json"; DATA_SUBDIR="data_calendar"
+      # PINNED: spec D-11 says "pin package version; refresh on upgrade" — exchange_calendars
+      # ships holiday-rule corrections in point releases, so an unpinned install can
+      # silently change the session list (and therefore Q-001) between two runs.
+      TOKEN_VAR="PIP_PACKAGES";       TOKEN_VAL="${PIP_PACKAGES:-exchange_calendars==4.13.2}" ;;
+    finbert)
+      # One-time weights pull, but idempotent (size+sha checked), so it is safe in the daily set.
+      FETCH_SCRIPT="fetch_finbert.py"; CONFIG_FILE="finbert.json"; DATA_SUBDIR="data_finbert"
+      TOKEN_VAR="HF_ENDPOINT";        TOKEN_VAL="${HF_ENDPOINT:-https://huggingface.co}" ;;
+    validate)
+      # Consumes the other vendors' output; no config file of its own and no credential.
+      FETCH_SCRIPT="validate.py";     CONFIG_FILE="calendar.json"; DATA_SUBDIR="data_quality"
+      TOKEN_VAR="VALIDATE_ARGS";      TOKEN_VAL="${VALIDATE_ARGS:---repair}" ;;
   esac
   if [ -z "$TOKEN_VAL" ]; then
     echo "SKIP $VENDOR: $TOKEN_VAR not set in runpod/.env" >&2
@@ -95,6 +128,7 @@ launch_vendor() {
     "TIINGO_API_TOKEN2": "${TIINGO_API_TOKEN2:-}",
     "FETCH_SCRIPT": "${FETCH_SCRIPT}",
     "CONFIG_PATH": "/workspace/code/${CONFIG_FILE}",
+    "DATA_DIR": "/workspace/${DATA_SUBDIR}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
     "STORE_LOGS": "${STORE_LOGS}"
   }
@@ -128,14 +162,42 @@ JSON
     printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$VENDOR" "$POD_ID" >> "$ROOT/runpod/launched-pods.log"
   fi
   echo "Launched $VENDOR pod ${POD_ID:-?} — it will fetch data to ${BUCKET}/ and self-terminate."
+
+  # STARTUP VERIFICATION. `desiredStatus: RUNNING` is NOT proof the job started: RunPod can place a
+  # pod on a bad machine where the container never launches, and it then sits allocated and BILLING
+  # with no public IP and no output. Observed repeatedly, once for 70 minutes. The only reliable
+  # signal is bootstrap.sh's own log appearing on the volume, so poll for that and relaunch if it
+  # never shows — the replacement usually lands on a different machine.
+  [ -n "${POD_ID:-}" ] || return 0
+  local i=0
+  while [ $i -lt "${STARTUP_CHECKS:-12}" ]; do
+    sleep "${STARTUP_POLL_SEC:-15}"
+    i=$((i + 1))
+    if aws s3 ls $S3FLAGS "$BUCKET/_pod_logs/" 2>/dev/null | grep -q -- "-${POD_ID}.log"; then
+      echo "  $VENDOR pod $POD_ID confirmed started (bootstrap log on volume)"
+      return 0
+    fi
+  done
+  echo "  !! $VENDOR pod $POD_ID produced no bootstrap log in $((i * ${STARTUP_POLL_SEC:-15}))s" >&2
+  echo "     (dead RunPod machine — killing it so it stops billing, and retrying once)" >&2
+  curl -sS -X DELETE "https://rest.runpod.io/v1/pods/$POD_ID" \
+    -H "Authorization: Bearer ${RUNPOD_API_KEY}" -o /dev/null 2>/dev/null || true
+  return 42   # caller relaunches
 }
 
 # _common.sh sets -e; each leg runs under `if` so one vendor's failure still launches the rest,
 # and the script exits nonzero listing what failed.
 for V in $VENDORS; do
-  if ! launch_vendor "$V"; then
-    FAILED="$FAILED $V"
+  # `set -e` (from _common.sh) would abort the script on a non-zero return before rc could be
+  # read, so capture it in a condition context.
+  rc=0; launch_vendor "$V" || rc=$?
+  if [ "$rc" = "42" ]; then          # accepted but never started — one retry
+    # `set -e` (from _common.sh) would abort the script on a non-zero return before rc could be
+  # read, so capture it in a condition context.
+  rc=0; launch_vendor "$V" || rc=$?
+    [ "$rc" = "42" ] && rc=1
   fi
+  [ "$rc" != "0" ] && FAILED="$FAILED $V"
 done
 
 if [ -n "$FAILED" ]; then
