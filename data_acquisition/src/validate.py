@@ -78,6 +78,8 @@ WI_MAX_GAP_SESSIONS = int(os.environ.get("WI_MAX_GAP_SESSIONS", "15"))
 WI_MAX_ROWS = int(os.environ.get("WI_MAX_ROWS", "30"))
 STORE_LOGS = os.environ.get("STORE_LOGS", "").strip().lower() in ("1", "true", "yes", "on")
 REPAIR = "--repair" in sys.argv
+# Deleting rows on an identity heuristic is opt-in; see the repair section.
+DROP_REUSE = "--drop-reuse" in sys.argv
 
 _LOG = []
 
@@ -206,8 +208,15 @@ def main():
         gap = idx[fp] - idx[bad[-1]] if bad[-1] in idx else 10 ** 6
         info = {"first_price_date": fp, "n_rows_before": len(bad),
                 "from": bad[0], "to": bad[-1], "gap_sessions_to_listing": gap}
-        if gap <= WI_MAX_GAP_SESSIONS and len(bad) <= WI_MAX_ROWS:
-            when_issued[t] = info               # benign: pre-listing when-issued prints
+        # THE GAP IS THE ONLY EVIDENCE. An earlier version also required len(bad) <= 30, which
+        # misread every re-domicile, merger and rename as a recycled symbol: STE (STERIS re-domiciled
+        # 2015), LIN, BKR, EVRG, GOOG and KKR all have a series running continuously to the day
+        # before `firstpricedate` — gap of 1 session — and it deleted 30,671 rows of their own
+        # history. Row count says nothing about identity. A genuinely recycled symbol has a DEAD
+        # PERIOD: Q traded once in 2024 then nothing for 204 sessions before Qnity listed.
+        if gap <= WI_MAX_GAP_SESSIONS:
+            when_issued[t] = info      # continuous into the listing: when-issued, or a corporate
+                                       # event that kept the tape running. Keep it.
         else:
             reuse[t] = info
             add_q(t, "ticker_reuse", detail=f"rows before firstpricedate {fp} are a prior issuer "
@@ -520,9 +529,12 @@ def main():
                                           "fix": ("placeholder bar replaced from eod_bulk" if was
                                                   else "gap filled from eod_bulk")})
                 filled += 1
-        # (b) drop rows that belong to a previous issuer of a recycled symbol
+        # (b) rows from a previous issuer of a recycled symbol.
+        # OFF BY DEFAULT. Deleting price history on a heuristic is not a repair — the first version
+        # of this removed 30,671 legitimate rows before the gap rule was corrected. The quarantine
+        # entry is the durable signal; pass --drop-reuse only when you have checked the names.
         dropped = 0
-        for t, info in reuse.items():
+        for t, info in (reuse.items() if DROP_REUSE else ()):
             fp = info["first_price_date"]
             before = len(eod[t])
             eod[t] = [r for r in eod[t] if r.get("date", "") >= fp]
