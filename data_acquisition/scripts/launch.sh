@@ -7,6 +7,9 @@
 #   scripts/launch.sh borrow     # D-10 IBKR borrow fees -> src/fetch_borrow.py + config/borrow.json
 #   scripts/launch.sh calendar   # D-11 NYSE sessions (source of truth) -> src/fetch_calendar.py
 #   scripts/launch.sh finbert    # D-16 FinBERT weights at a pinned sha -> src/fetch_finbert.py
+#   scripts/launch.sh post       # WAITS for today's vendor manifests, then validate -> build_m1.
+#                                # Fire it alongside `all`; it self-sequences. This is the stage
+#                                # that keeps the M1 tables in step with the data.
 #   scripts/launch.sh m1         # §3/§4 landing layer -> src/build_m1.py (Parquet + qlib bridge)
 #                                # Needs pandas+pyarrow, installed via PIP_PACKAGES. Run AFTER
 #                                # validate, since it consumes quarantine.json.
@@ -37,9 +40,10 @@ case "${1:-eodhd}" in
   calendar)       VENDORS="calendar" ;;
   finbert)        VENDORS="finbert" ;;
   m1|landing)     VENDORS="m1" ;;
+  post)           VENDORS="post" ;;
   validate|qa)    VENDORS="validate" ;;
   *)
-    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, borrow, calendar, finbert, validate, m1, all)" >&2; exit 2 ;;
+    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, borrow, calendar, finbert, validate, m1, post, all)" >&2; exit 2 ;;
 esac
 : "${RUNPOD_API_KEY:?account rpa_ key, set in runpod/.env}"
 
@@ -68,7 +72,7 @@ launch_vendor() {
   # the same. Override globally with RUNPOD_VCPU.
   VCPU="${RUNPOD_VCPU:-2}"
   case "$VENDOR" in
-    nasdaq|m1) VCPU="${RUNPOD_VCPU:-4}" ;;
+    nasdaq|m1|post) VCPU="${RUNPOD_VCPU:-4}" ;;
   esac
   case "$VENDOR" in
     eodhd)
@@ -96,6 +100,11 @@ launch_vendor() {
       # One-time weights pull, but idempotent (size+sha checked), so it is safe in the daily set.
       FETCH_SCRIPT="fetch_finbert.py"; CONFIG_FILE="finbert.json"; DATA_SUBDIR="data_finbert"
       TOKEN_VAR="HF_ENDPOINT";        TOKEN_VAL="${HF_ENDPOINT:-https://huggingface.co}" ;;
+    post)
+      # Waits for the fetchers, then runs validate + build_m1 in one pod. Same pip deps as m1,
+      # and the same 8 GB — it ends up doing the M1 build itself.
+      FETCH_SCRIPT="post.py";         CONFIG_FILE="calendar.json"; DATA_SUBDIR="m1"
+      TOKEN_VAR="PIP_PACKAGES";       TOKEN_VAL="${PIP_PACKAGES:-pandas pyarrow}" ;;
     m1)
       # The landing layer is the one job with heavy pip deps; it reads every vendor tree off the
       # volume and writes the M1 Parquet tables + qlib CSVs back to it.
@@ -123,6 +132,10 @@ launch_vendor() {
 
   echo "Uploading $VENDOR code to $BUCKET/code/ ..."
   aws s3 cp $S3FLAGS "$ROOT/src/$FETCH_SCRIPT"      "$BUCKET/code/$FETCH_SCRIPT"
+  if [ "$VENDOR" = "post" ]; then      # post shells out to these two
+    aws s3 cp $S3FLAGS "$ROOT/src/validate.py"  "$BUCKET/code/validate.py"
+    aws s3 cp $S3FLAGS "$ROOT/src/build_m1.py"  "$BUCKET/code/build_m1.py"
+  fi
   aws s3 cp $S3FLAGS "$ROOT/src/bootstrap.sh"       "$BUCKET/code/bootstrap.sh"
   aws s3 cp $S3FLAGS "$ROOT/config/$CONFIG_FILE"    "$BUCKET/code/$CONFIG_FILE"
 

@@ -18,6 +18,13 @@ needs, stores them on a persistent RunPod network volume as JSON, and mirrors th
   `OUT_DIR=./m1 EOD_DIR=./data … python3 data_acquisition/src/build_m1.py`.
   **This is what a model reads.** It is also where every consumption rule is enforced rather than
   documented — session grid, raw-close provenance, quarantine, vintages, permaticker, split-vs-spinoff.
+- `scripts/launch.sh post` → **the closing stage, and the one that keeps models in step with the
+  data.** Waits for today's vendor manifests, then runs `validate` and `build_m1` in order in one
+  pod. Fire it at the same time as `all` — it self-sequences.
+
+      scripts/launch.sh all && scripts/launch.sh post
+
+  Without it the M1 Parquet tables silently stay at yesterday's build while the raw volume moves on.
 - `scripts/launch.sh validate` → **D-12 / M1-04 cross-vendor check + Q-004 + repair**
   (`validate.py` → `data_quality/`). Reads the volume only — no API calls, no credits.
   **Run it AFTER the nightly `all` finishes**, not as part of it: `all` launches pods in parallel and
