@@ -5,6 +5,12 @@
 **Completeness claim:** The blueprint's entire external-data surface is the nine M1 tables + the Q-001 trading calendar + two model/ops artifacts (FinBERT weights, broker session). Every column of every M1 table is mapped below to a vendor field or to a blueprint-sanctioned fallback (§6). Closure proof in §7. Verified against vendor docs 2026-07-17; residual verify-at-implementation items in §8.
 **Date:** 2026-07-17
 **Changelog v1.0 → v1.1 (same day):** removed every dependency on holding an Interactive Brokers **account**. D-10 borrow collection now runs on the **public, no-login** IBKR short-stock file + iBorrowDesk (verified account-free). The ES-futures hedge option was dropped. Execution changed from fixed `IBKR (ib_async)` to a **BrokerAdapter interface** with `exec.broker: req`. §10-loggable deviation on `exec.broker`/§J code targets only — **no data item (D/G) changes**.
+**Decision log — D-14 / G-03 (2026-08-14): historical `rev_mom` is DECLINED, not deferred.** Priced and rejected; do not re-open without new information.
+
+- The fix requires **vintage-dated** consensus (what FY1 EPS *was* on a past date), not the `epsTrend{7,30,60,90}daysAgo` rear-view EODHD already provides free. Only Zacks Data (PIT annual EPS from 1979, quarterly from 1982, incl. stddev and analyst count) and I/B/E/S sell it; both are contact-sales institutional products. Intrinio's Zacks feed was checked and **does not qualify** — it returns the same 90-day rear-view shape.
+- **Accepted consequence:** F8 `rev_mom` is NaN for the whole backtest, exactly as G-03 sanctions ("historical `rev_mom` = NaN otherwise"). Own-snapshot PIT history accrues from 2026-07-28 forward via the daily D-14 collector, with a permanent 14-day hole (07-28 → 08-11) from before the cadence was daily.
+- **Why this is affordable:** G-02's seasonal-diff SUE reads from SF1, which now reaches 1992, so the primary-SUE inputs being unavailable costs nothing. D-14 therefore costs exactly one feature, not the F8 block.
+
 **Changelog v1.3 → v1.4 (2026-08-14) — D-05 depth: the 5-year ceiling is bought out.** The Sharadar subscription was upgraded to the **full-history bundle**, and the `years=N` gate is per-subscription, not per-account-type as v1.3 item 4 implied. Verified live after the upgrade:
 
 - `years=5 | 10 | full` all return bulk zips for `fundamentals`, `stocks` and `actions` (all three of the latter two were HTTP 403 before). The 403 bodies name the tiers verbatim: *"A 10-year (or full-history) subscription is required for this bulk file."*
