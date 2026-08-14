@@ -280,33 +280,66 @@ def _rows(payload):
     return data if isinstance(data, list) else []
 
 
-def _fetch_bulk_zip(endpoint, years, dimension=None):
-    """`years=N` -> 302 -> CSV zip -> list of row dicts. urllib follows the redirect itself."""
+def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
+    """`years=N` -> 302 -> CSV zip, STREAMED to `out_path` as gzipped JSON.
+
+    Never materialises the table. The previous version read the zip into memory, built a list of
+    row dicts and then serialised it — with the full-history SF1 (680,967 rows x 112 columns) that
+    killed the 4 GB pod with SIGKILL (exit 137). Now the zip goes to a temp file, the CSV is read
+    row-by-row and each row is written straight into the gzip stream, so peak memory is one row
+    plus the zip on disk regardless of table size.
+
+    Returns (n_rows, n_tickers, min_date, max_date)."""
     url = f"{API}/{endpoint}?{urllib.parse.urlencode({'api_key': TOKEN, 'format': 'json', 'years': years})}"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=1800, context=_ctx) as r:
-        blob = r.read()
-    if blob[:2] != b"PK":
-        raise RuntimeError(f"bulk years={years} did not return a zip "
-                           f"({len(blob)} bytes, starts {blob[:40]!r})")
-    out = []
-    with zipfile.ZipFile(io.BytesIO(blob)) as z:
-        name = z.namelist()[0]
-        with z.open(name) as f:
-            for row in csv.DictReader(io.TextIOWrapper(f, "utf-8")):
-                if dimension and row.get("dimension") != dimension:
-                    continue
-                out.append(row)
-    return out
-
-
-def _dump_gz(path, payload):
-    """Gzipped JSON — the whole-market SF1 set is ~122k rows x 112 columns; gzip keeps it ~40 MB."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".part"
-    with gzip.open(tmp, "wt", encoding="utf-8") as f:
-        json.dump(payload, f)
-    os.replace(tmp, path)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    zip_tmp = out_path + ".zip.part"
+    try:
+        with urllib.request.urlopen(req, timeout=3600, context=_ctx) as r, open(zip_tmp, "wb") as f:
+            head = r.read(2)
+            if head != b"PK":
+                raise RuntimeError(f"bulk years={years} did not return a zip (starts {head!r})")
+            f.write(head)
+            while True:
+                chunk = r.read(1 << 22)
+                if not chunk:
+                    break
+                f.write(chunk)
+        n = 0
+        tickers = set()
+        lo = hi = None
+        tmp = out_path + ".part"
+        with zipfile.ZipFile(zip_tmp) as z, gzip.open(tmp, "wt", encoding="utf-8") as g:
+            name = z.namelist()[0]
+            g.write('{"vendor":"Sharadar bulk","table":"%s","years":"%s","dimension":%s,'
+                    '"pulled_at_utc":"%s","rows":['
+                    % (endpoint, years, json.dumps(dimension),
+                       datetime.now(timezone.utc).isoformat()))
+            with z.open(name) as f:
+                for row in csv.DictReader(io.TextIOWrapper(f, "utf-8")):
+                    if dimension and row.get("dimension") != dimension:
+                        continue
+                    if n:
+                        g.write(",")
+                    g.write(json.dumps(row))
+                    n += 1
+                    t = row.get("ticker")
+                    if t:
+                        tickers.add(t)
+                    d = row.get("calendardate") or row.get("date")
+                    if d:
+                        d = str(d)[:10]
+                        lo = d if lo is None or d < lo else lo
+                        hi = d if hi is None or d > hi else hi
+            g.write('],"n_rows":%d,"n_tickers":%d}' % (n, len(tickers)))
+        os.replace(tmp, out_path)
+        return n, len(tickers), lo, hi
+    finally:
+        for p in (zip_tmp,):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
 
 def _ticker_batches(syms):
@@ -622,23 +655,15 @@ def main():
                  "count": 0, "added": 0, "error": None}
         try:
             # An unfiltered JSON query is silently capped at a ~2-year default window regardless of
-            # the .gte filter you pass (SF1 returned 21,781 rows / 2024-06-30 onward whatever the
-            # date). Deep history comes from the vendor's BULK path: `years=N` 302-redirects to a
-            # CSV zip. Measured: fundamentals-5Y.csv.zip is 118 MB, downloads in ~10 s, and yields
-            # 122,047 ARQ rows back to 2020-03-31 across 7,669 tickers — versus 503 ticker-filtered.
-            rows = _fetch_bulk_zip(ENDPOINT[table], WHOLE_MARKET_YEARS,
-                                   dimension if table == "SF1" else None)
+            # the .gte filter you pass. Deep history comes from the vendor's BULK path: `years=N`
+            # 302-redirects to a CSV zip, subscription-gated (5 / 10 / full). Streamed, not buffered
+            # — see _stream_bulk_zip; the buffered version OOM-killed the pod on full-history SF1.
             out_gz = out + ".gz"
-            n_tick = len({r.get("ticker") for r in rows})
-            _dump_gz(out_gz, {"vendor": "Sharadar bulk", "table": table,
-                              "years": WHOLE_MARKET_YEARS,
-                              "dimension": dimension if table == "SF1" else None,
-                              "pulled_at_utc": datetime.now(timezone.utc).isoformat(),
-                              "n_rows": len(rows), "n_tickers": n_tick, "rows": rows})
-            entry.update(ok=True, count=len(rows), added=len(rows))
-            ds = sorted(str(r.get(spec["date_filter"]) or "")[:10] for r in rows if r.get(spec["date_filter"]))
-            log(f"OK   {table:<14} _ALL: {len(rows):,} rows across {n_tick:,} tickers "
-                f"[bulk years={WHOLE_MARKET_YEARS}] {ds[0] if ds else '-'}..{ds[-1] if ds else '-'} -> {out_gz}")
+            n, n_tick, lo, hi = _stream_bulk_zip(ENDPOINT[table], WHOLE_MARKET_YEARS, out_gz,
+                                                 dimension if table == "SF1" else None)
+            entry.update(ok=True, count=n, added=n)
+            log(f"OK   {table:<14} _ALL: {n:,} rows across {n_tick:,} tickers "
+                f"[bulk years={WHOLE_MARKET_YEARS}] {lo}..{hi} -> {out_gz}")
         except Exception as e:
             entry["error"] = f"{type(e).__name__}: {e}"
             log(f"FAIL {table:<14} _ALL: {entry['error']}")
