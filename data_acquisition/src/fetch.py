@@ -540,10 +540,37 @@ def _bulk_row_floor(bulk_dir):
     return int(counts[len(counts) // 2] * BULK_MIN_ROWS_FRAC)
 
 
+def _credit_budget():
+    """(used, cap) from EODHD's own counter, or (None, None) if unavailable.
+
+    The /user call is itself free. The counter resets lazily on the first request of a new GMT day,
+    so `apiRequestsDate` is authoritative for *which* day the number belongs to."""
+    try:
+        d = _get("user", {"api_token": TOKEN, "fmt": "json"})
+        return int(d["apiRequests"]), int(d["dailyRateLimit"])
+    except Exception:
+        return None, None
+
+
 def main():
     if not TOKEN:
         print("FATAL: EODHD_API_TOKEN not set", file=sys.stderr)
         return 1
+
+    # CREDIT PREFLIGHT. Running twice in one GMT day is the failure mode this prevents: the second
+    # run starts with the remainder, gets a few tickers in, and then every remaining job 402s —
+    # 2,993 of 3,026 jobs "failed" that way on 2026-08-14 while changing no data at all, because a
+    # failed job simply does not write. That is a alarming-looking manifest for a no-op. Bail early
+    # and cleanly instead, so a same-day re-run is a cheap skip rather than a fake catastrophe.
+    used, cap = _credit_budget()
+    if used is not None and cap:
+        left = cap - used
+        need = int(os.environ.get("MIN_CREDITS", "20000"))
+        log(f"     credits: {used:,}/{cap:,} used, {left:,} left (need >= {need:,} to start)")
+        if left < need:
+            log(f"SKIP run: only {left:,} credits remain today — a full pass needs ~{need:,}. "
+                f"The counter resets at midnight GMT; re-run then. Nothing was fetched.")
+            return 0
     with open(CONFIG_PATH) as f:
         cfg = json.load(f)
     exchange = cfg.get("exchange", "US")
