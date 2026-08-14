@@ -62,7 +62,9 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-OUT_DIR = os.environ.get("OUT_DIR", "/workspace/m1")
+# DATA_DIR is what launch.sh sets for every job; accept it as an alias for OUT_DIR so the
+# pod payload stays uniform across vendors.
+OUT_DIR = os.environ.get("OUT_DIR") or os.environ.get("DATA_DIR", "/workspace/m1")
 EOD_DIR = os.environ.get("EOD_DIR", "/workspace/data")
 SEP_DIR = os.environ.get("SEP_DIR", "/workspace/data_nasdaq/SEP")
 SF1_DIR = os.environ.get("SF1_DIR", "/workspace/data_nasdaq/SF1")

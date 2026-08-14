@@ -109,9 +109,11 @@ MAX_TICKER_CHARS = int(os.environ.get("SHARADAR_TICKER_CHARS", "195"))
 PACE_SEC = float(os.environ.get("SHARADAR_PACE_SEC", "0.05"))
 RL_BUFFER = 3           # start waiting for the reset when this few requests remain in the window
 WHOLE_REFRESH_DAYS = 7  # skip re-pulling a whole-table snapshot whose file is younger than this
-# Bulk-zip window for the survivorship-free whole-market pull. 5 is what the retail tier serves;
-# years=10 returns 403.
-WHOLE_MARKET_YEARS = int(os.environ.get("SHARADAR_WHOLE_YEARS", "5"))
+# Bulk-zip window for the survivorship-free whole-market pull. Accepts 5 / 10 / "full" — the API
+# gates each behind a subscription level and says so in the 403 body. On a full-history bundle
+# "full" reaches 1998; on the 5Y tier anything above 5 returns 403, so this is the knob to drop
+# back if the subscription changes.
+WHOLE_MARKET_YEARS = os.environ.get("SHARADAR_WHOLE_YEARS", "full")
 # Vendor 5xx blips run minutes, not the seconds in-request retries cover — so first-pass failures
 # get one more attempt at end of run, after this pause (seconds; env-overridable).
 RETRY_SWEEP_DELAY = int(os.environ.get("RETRY_SWEEP_DELAY", "60"))

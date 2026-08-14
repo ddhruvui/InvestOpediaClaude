@@ -7,6 +7,9 @@
 #   scripts/launch.sh borrow     # D-10 IBKR borrow fees -> src/fetch_borrow.py + config/borrow.json
 #   scripts/launch.sh calendar   # D-11 NYSE sessions (source of truth) -> src/fetch_calendar.py
 #   scripts/launch.sh finbert    # D-16 FinBERT weights at a pinned sha -> src/fetch_finbert.py
+#   scripts/launch.sh m1         # §3/§4 landing layer -> src/build_m1.py (Parquet + qlib bridge)
+#                                # Needs pandas+pyarrow, installed via PIP_PACKAGES. Run AFTER
+#                                # validate, since it consumes quarantine.json.
 #   scripts/launch.sh validate   # D-12/M1-04 cross-vendor check + Q-004 + repair -> src/validate.py
 #                                # NOT part of `all`: it must run AFTER the eodhd pass, and `all`
 #                                # launches pods in parallel. Reads the volume only — no API calls,
@@ -33,9 +36,10 @@ case "${1:-eodhd}" in
   borrow|ibkr)    VENDORS="borrow" ;;
   calendar)       VENDORS="calendar" ;;
   finbert)        VENDORS="finbert" ;;
+  m1|landing)     VENDORS="m1" ;;
   validate|qa)    VENDORS="validate" ;;
   *)
-    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, borrow, calendar, finbert, validate, all)" >&2; exit 2 ;;
+    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, borrow, calendar, finbert, validate, m1, all)" >&2; exit 2 ;;
 esac
 : "${RUNPOD_API_KEY:?account rpa_ key, set in runpod/.env}"
 
@@ -84,6 +88,11 @@ launch_vendor() {
       # One-time weights pull, but idempotent (size+sha checked), so it is safe in the daily set.
       FETCH_SCRIPT="fetch_finbert.py"; CONFIG_FILE="finbert.json"; DATA_SUBDIR="data_finbert"
       TOKEN_VAR="HF_ENDPOINT";        TOKEN_VAL="${HF_ENDPOINT:-https://huggingface.co}" ;;
+    m1)
+      # The landing layer is the one job with heavy pip deps; it reads every vendor tree off the
+      # volume and writes the M1 Parquet tables + qlib CSVs back to it.
+      FETCH_SCRIPT="build_m1.py";     CONFIG_FILE="calendar.json"; DATA_SUBDIR="m1"
+      TOKEN_VAR="PIP_PACKAGES";       TOKEN_VAL="${PIP_PACKAGES:-pandas pyarrow}" ;;
     validate)
       # Consumes the other vendors' output; no config file of its own and no credential.
       FETCH_SCRIPT="validate.py";     CONFIG_FILE="calendar.json"; DATA_SUBDIR="data_quality"

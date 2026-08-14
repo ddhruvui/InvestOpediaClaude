@@ -1,6 +1,6 @@
 {
   "from": "2000-01-01",
-  "sf1_from": "2021-07-28",
+  "sf1_from": "1998-01-01",
   "dimension": "ARQ",
   "incremental": true,
   "whole_refresh_days": 1,
@@ -536,5 +536,5 @@
     "TICKERS",
     "SP500"
   ],
-  "_sf1_from_comment": "SF1 STAYS AT 5 YEARS \u2014 not a choice. The retail tier caps fundamentals history: calendardate.gte=2000-01-01 returns only 20 quarters (oldest 2021-09-30) and the years=10 bulk download returns 403. SEP and ACTIONS DO reach 2000 and are widened. Lifting this needs a higher Sharadar subscription, not a config change."
+  "_sf1_from_comment": "Full-history bundle (upgraded 2026-08-14): SF1 now reaches 1998-03-31, verified by query. Set to 1998 rather than 2000 on purpose \u2014 F7/G-02 need lookback BEFORE the modelling window starts, so two extra years of fundamentals means asset growth and the 12-quarter seasonal-diff SUE are both computable from the very first 2000 price session instead of only from ~2003."
 }
