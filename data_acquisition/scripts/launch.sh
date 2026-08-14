@@ -61,7 +61,15 @@ RUNNING_PODS=$(curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
   -H "Authorization: Bearer ${RUNPOD_API_KEY}" 2>/dev/null) || RUNNING_PODS=""
 
 launch_vendor() {
-  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL DATA_SUBDIR
+  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL DATA_SUBDIR VCPU
+  # RunPod gives 2 GB per vCPU. Default 2 vCPU / 4 GB is fine for the streaming fetchers; nasdaq
+  # merges every ticker's history in memory during a cold pull and OOM-killed (exit 137) at 4 GB
+  # once the window went to 26 years, so it gets 4 vCPU / 8 GB. m1 loads Parquet frames and gets
+  # the same. Override globally with RUNPOD_VCPU.
+  VCPU="${RUNPOD_VCPU:-2}"
+  case "$VENDOR" in
+    nasdaq|m1) VCPU="${RUNPOD_VCPU:-4}" ;;
+  esac
   case "$VENDOR" in
     eodhd)
       FETCH_SCRIPT="fetch.py";        CONFIG_FILE="tickers.json";  DATA_SUBDIR="data"
@@ -124,7 +132,7 @@ launch_vendor() {
   "name": "investopediaclaude-${VENDOR}",
   "computeType": "CPU",
   "cloudType": "SECURE",
-  "vcpuCount": ${RUNPOD_VCPU:-2},
+  "vcpuCount": ${VCPU},
   "cpuFlavorIds": ${FLAVORS},
   "imageName": "${IMAGE}",
   "networkVolumeId": "${RUNPOD_VOLUME_ID}",
