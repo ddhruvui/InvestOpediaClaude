@@ -378,7 +378,7 @@ pre-listing rows from a recycled symbol dropped.
 > vendor-faithful — but it means `validate --repair` belongs *after* each nightly run.
 > `quarantine.json` is the durable artefact; the §4 parse layer should consume it.
 
-**Current quarantine (34 tickers).** Six are systematic — EODHD's pre-spinoff `close` is rescaled,
+**Quarantine snapshot (34 tickers, taken 2026-08-13 on the then 5-year window).** The spans below start at 2021-07-28 because that was the window start; after the widen to 2000 they extend back further. Re-run `launch.sh validate` for the current list — this table is a record, not live state. Six are systematic — EODHD's pre-spinoff `close` is rescaled,
 so use Sharadar `closeunadj` over these spans:
 
 | ticker | span | rows | worst |

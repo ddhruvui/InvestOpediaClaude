@@ -35,18 +35,27 @@ Every spec vendor now has a puller.
 > The IBKR snapshot half is *immediately* unrecoverable — it is a live indicative file with no
 > history at all.
 
-> **WINDOW (current, widened 2026-08-11):** prices/fundamentals `from = 2021-07-28` (**5 years**,
-> 1,265 sessions), `news_from = 2020-12-01` (full EODHD depth), `market_from = 2000-01-01` (SPY is
-> 1 credit per *call* regardless of window, so the 26-year history is free). Sharadar `sf1_from =
-> 2021-07-28` gives ~20 quarters, which clears G-02's 12-quarter seasonal-diff SUE requirement for
-> 493 of 503 tickers.
+> **WINDOW (current, 2026-08-14).** Prices and corporate actions run to the spec's floor; fundamentals
+> start earlier still, on purpose.
 >
-> **Widening again is now safe but was not always:** all three fetchers used to track only how far
-> *forward* they had got, so moving a start date *backward* fetched nothing and the change silently
-> did nothing. Each now detects it — EODHD news backfills the older gap, Sharadar compares against a
-> recorded `_window.json` marker, and Tiingo treats a file as stale when its rows start later than
-> the configured window. Note EODHD news depth is deeper than the spec's "~Dec 2020" claim for some
-> names (KO reaches 2016-06-01), so there is more to take if you want it.
+> | feed | start | why |
+> |---|---|---|
+> | EODHD `eod` + `eod_bulk` | `2000-01-01` | spec §2 D-01 |
+> | Sharadar SEP / ACTIONS | `2000-01-01` | matches D-01 |
+> | Sharadar SF1 (`sf1_from`) | **`1998-01-01`** | F7 asset growth needs 5 quarters and G-02's SUE needs 12, so fundamentals must start BEFORE the price window or those features only appear ~3 years in |
+> | EODHD news | `2020-12-01` | vendor depth (reaches ~2016 for some names) |
+> | SPY (`market_from`) | `2000-01-01` | 1 credit per *call*, so depth is free |
+>
+> Sharadar is on the **full-history bundle** (upgraded 2026-08-14): SF1 reaches 1992-12-31 and ACTIONS
+> 1997-12-31 with 19,231 delistings. Before the upgrade the retail tier capped SF1 at ~5 years and
+> `years=10` returned 403 — if fundamentals history ever truncates again, check the subscription first.
+>
+> **Widening is safe to repeat.** All three fetchers used to track only how far *forward* they had got,
+> so moving a start date *backward* silently did nothing. Each now detects it: EODHD news backfills the
+> older gap, Sharadar compares a recorded `_window.json` marker, Tiingo checks the stored rows' start date.
+>
+> **`eod_bulk` to 2000 is credit-bound, not disk-bound:** ~5,400 sessions x 100 credits ≈ 5.4 nightly
+> runs at the 100k/day cap, and ~21.5 GiB (day-files were 2 MiB in 2000, not today's 6.6 MiB).
 
 One-time: `cp data_acquisition/runpod/.env.example data_acquisition/runpod/.env` and fill it in
 (RunPod account/S3 keys + network-volume id, plus the token for whichever vendor you launch —
