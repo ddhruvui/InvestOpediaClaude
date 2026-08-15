@@ -44,8 +44,9 @@ RULES THIS ENFORCES (each one cost real debugging to find; see README "Reading t
     73 "splits" land on a Sharadar spinoff. They are typed `spinoff`, not `split`, so Q-002 does
     not treat a spinoff as a share-count change.
 
- 7. PERMATICKER.  Symbols get recycled (TKO carried a different issuer before 2023-09-12). Every
-    row carries permaticker, and prices before the entity's firstpricedate are dropped.
+ 7. PERMATICKER.  Every row carries permaticker. Rows before the entity's firstpricedate are
+    FLAGGED (`pre_first_price_date`), never dropped — most are a corporate event that kept the
+    tape running, not a recycled symbol, and deleting them cost 30,866 rows of real history once.
 
  8. PROVENANCE (§3).  vendor / pulled_at_utc / source_endpoint / data_snapshot_id on every table.
 
@@ -56,6 +57,7 @@ import gzip
 import hashlib
 import json
 import os
+import shutil
 import sys
 import traceback
 from datetime import datetime, timezone
@@ -117,12 +119,35 @@ def _prov(df, vendor, endpoint, snapshot):
 
 
 def _write(df, path, partition_year=False):
-    os.makedirs(os.path.dirname(path) or path, exist_ok=True)
+    """Write a table, sharded by year when asked.
+
+    NOT pandas' Hive partitioning (`partition_cols=["year"]`), for two measured reasons:
+
+      1. It APPENDS. Each write drops a new `<uuid>-0.parquet` into the partition instead of
+         replacing it, so four m1 runs left four copies in `year=2000/` and anything reading the
+         directory as a dataset got ~4x the true rows.
+      2. RunPod's S3 cannot serve the resulting keys. `GetObject` on
+         `m1/raw_prices_eod/year=2024/<uuid>-0.parquet` returns "object not found" even though the
+         same key is listed — the `=` in the directory name is not addressable. The tables were
+         effectively unreadable off the volume.
+
+    Deterministic `part-<year>.parquet` names fix both: re-runs overwrite in place, and the keys
+    are plain. Stale shards are cleared first so a shrinking table cannot leave orphans behind."""
     if partition_year:
-        df = df.copy()
-        df["year"] = pd.to_datetime(df["date"]).dt.year
-        df.to_parquet(path, partition_cols=["year"], index=False)
+        os.makedirs(path, exist_ok=True)
+        # Migrate away from the old Hive layout. Those `year=YYYY/` directories accumulated a new
+        # uuid-named parquet on every run and cannot be deleted through RunPod's S3 API (the `=` in
+        # the key is not addressable), so the removal has to happen here, on the mounted volume.
+        for legacy in glob.glob(os.path.join(path, "year=*")):
+            if os.path.isdir(legacy):
+                shutil.rmtree(legacy, ignore_errors=True)
+        for stale in glob.glob(os.path.join(path, "*.parquet")):
+            os.remove(stale)
+        years = pd.to_datetime(df["date"]).dt.year
+        for y, g in df.groupby(years):
+            g.to_parquet(os.path.join(path, f"part-{int(y)}.parquet"), index=False)
     else:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         df.to_parquet(path, index=False)
     return len(df)
 
@@ -218,9 +243,13 @@ def main():
     px = px[px["date"].isin(S)]                                   # RULE 1: session grid
     n_sess = len(px)
     px["permaticker"] = px["ticker"].map(permatick)               # RULE 7
+    # FLAG, do not delete. Rows before the entity master's firstpricedate are usually a corporate
+    # event that kept the tape running (re-domicile, merger, rename) and only occasionally a
+    # recycled symbol. Deleting them cost 30,866 rows of legitimate history — STE, LIN, BKR, EVRG,
+    # GOOG and KKR each lost years of their own prices — before the distinction was understood.
+    # validate.py's quarantine is where the recycled-symbol judgement lives; here we only mark.
     fp = px["ticker"].map(first_price)
-    before_fp = fp.notna() & (px["date"] < fp)
-    px = px[~before_fp]
+    px["pre_first_price_date"] = (fp.notna() & (px["date"] < fp)).fillna(False)
     px["quarantined"] = False
     for t, a, b in qspans:                                        # RULE 3
         m = (px["ticker"] == t) & (px["date"] >= a) & (px["date"] <= b)
@@ -233,8 +262,8 @@ def main():
     manifest["tables"]["raw_prices_eod"] = _write(px, os.path.join(OUT_DIR, "raw_prices_eod"),
                                                   partition_year=True)
     src = px["close_source"].value_counts().to_dict()
-    log(f"OK   raw_prices_eod    : {len(px):,} rows  (dropped {n_raw - n_sess:,} non-session, "
-        f"{int(before_fp.sum()):,} pre-listing)  close_source={src}  "
+    log(f"OK   raw_prices_eod    : {len(px):,} rows  (dropped {n_raw - n_sess:,} non-session; "
+        f"flagged {int(px['pre_first_price_date'].sum()):,} pre-listing, NOT dropped)  close_source={src}  "
         f"quarantined={int(px['quarantined'].sum()):,}")
 
     # ---------------------------------------------------------------- D-02/03/04 corporate actions
