@@ -547,7 +547,17 @@ def _credit_budget():
     so `apiRequestsDate` is authoritative for *which* day the number belongs to."""
     try:
         d = _get("user", {"api_token": TOKEN, "fmt": "json"})
-        return int(d["apiRequests"]), int(d["dailyRateLimit"])
+        used, cap = int(d["apiRequests"]), int(d["dailyRateLimit"])
+        # The counter resets LAZILY, on the first billable request of a new GMT day — a /user call
+        # does not trigger it. So just after midnight it still reports YESTERDAY's date and
+        # yesterday's (often exhausted) total. Taking that at face value would make this preflight
+        # skip the whole run on exactly the day it is supposed to start. `apiRequestsDate` is the
+        # authority: if it is not today, the budget is really full.
+        if str(d.get("apiRequestsDate", ""))[:10] != datetime.now(timezone.utc).date().isoformat():
+            log(f"     credit counter still dated {d.get('apiRequestsDate')} "
+                f"({used:,} used) — it resets on the first billable call; treating budget as full")
+            return 0, cap
+        return used, cap
     except Exception:
         return None, None
 
