@@ -739,12 +739,12 @@ def main():
         bstart = datetime.strptime(bulk.get("from") or cfg.get("from") or "2000-01-01", "%Y-%m-%d").date()
         bend = (datetime.strptime(bulk["to"], "%Y-%m-%d").date() if bulk.get("to")
                 else datetime.now(timezone.utc).date())
-        max_days = int(bulk.get("max_days_per_run", 500))
-        # AUTO-SIZE to the credits actually left. A fixed cap either wastes budget (600 files =
-        # 60k of a 100k day) or overshoots and 402s. Re-read the counter HERE, after the
-        # per-ticker pass has spent what it needs, and turn the remainder into day-files at
-        # 100 credits each, keeping a reserve for eod_bulk_actions and the retry sweep.
-        if str(bulk.get("max_days_per_run")).lower() == "auto":
+        # Size the run. "auto" means: use whatever credits are left after the per-ticker pass.
+        # int() must never see the sentinel — an earlier version converted first and crashed the
+        # whole run with ValueError: invalid literal for int() with base 10: 'auto', after the
+        # per-ticker data had been fetched but before eod_bulk or the manifest.
+        raw_max = bulk.get("max_days_per_run", 500)
+        if str(raw_max).strip().lower() == "auto":
             used_now, cap_now = _credit_budget()
             if used_now is not None and cap_now:
                 reserve = int(os.environ.get("BULK_CREDIT_RESERVE", "6000"))
@@ -754,6 +754,8 @@ def main():
             else:
                 max_days = 500
                 log("     eod_bulk auto-size: credit counter unavailable, falling back to 500")
+        else:
+            max_days = int(raw_max)
         entry = {"symbol": f"{bex} bulk {bstart}..{bend}", "dataset": "eod_bulk",
                  "ok": True, "count": 0, "added": 0, "error": None}
         bulk_dir = os.path.join(DATA_DIR, "eod_bulk", bex)
