@@ -539,7 +539,8 @@
     "exchange": "US",
     "from": "2000-01-01",
     "to": null,
-    "max_days_per_run": 600
+    "max_days_per_run": "auto",
+    "_max_days_comment": "'auto' sizes the backfill to whatever credits remain after the per-ticker pass, so a night uses the full 100k instead of a fixed 600 files (60k). Set an integer to cap it manually."
   },
   "eod_bulk_actions": {
     "_comment": "D-02/D-03 whole-market, FORWARD-ONLY on purpose. Backfilling this to 2000 costs ~1.34M credits (200/session x 6,694) and 55 nightly runs, and it would be redundant: Sharadar whole-market ACTIONS already covers 1997->now with 673k rows, 32,009 tickers and 19,231 delistings, and its action codes are typed (split/spinoff/delisted) where EODHD's are not. This feed exists to keep the bulk universe's actions current going forward; history comes from Sharadar. Widen only if you find something Sharadar ACTIONS is missing.",
