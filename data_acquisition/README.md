@@ -447,6 +447,13 @@ this is not a fetcher, so it runs locally or anywhere with the volume mirrored).
 > are on **different share bases** and must not be level-joined across a split. `rev_mom` survives
 > both, being a within-row ratio.
 
+> **`quarantined` is per-bar, not per-span.** It flags the exact dates a vendor disagreement was
+> measured on, from `dates` in `quarantine.json`. It used to mask the whole `[from, to]` interval,
+> which for most tickers is the entire history — CHD breaches on 21 days between 2000 and 2026, so
+> **1,133,450 rows carried the flag for 169,146 real breaches, 38% of the table.** Anyone filtering
+> `quarantined == False` was discarding 85% of good data. Fixed on both sides; a `quarantine.json`
+> written before `dates` existed still falls back to spans, and the log says so.
+
 > **`quarantined=True` does not mean "unusable"** once rule 2 has run. It means the vendors
 > disagreed on that span and Sharadar's raw print was used. DD carries the flag *and* the correct
 > price. Only a row still sourced from EODHD inside a tainted span has its close dropped.

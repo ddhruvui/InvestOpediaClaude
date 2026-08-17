@@ -214,12 +214,24 @@ def main():
     log(f"OK   entities          : {len(ent):,} rows, {len(permatick):,} symbols with a permaticker")
 
     quar = _load(QUARANTINE_PATH) or {}
-    qspans = []
+    # EXACT DATES, not the endpoint range. A close_disagreement carries every breaching date in
+    # `dates`; masking the [from, to] interval instead flagged 1,133,450 rows for 169,146 real
+    # breaches (38% of the table) because most tickers breach a handful of days decades apart.
+    # A quarantine.json written before `dates` existed still has only endpoints — those fall back
+    # to the old span behaviour and are counted separately so the coarseness is visible, not silent.
+    qdates, qspans = {}, []
     for t, v in quar.items():
         for i in v.get("issues", []):
-            if i.get("reason") == "close_disagreement":
+            if i.get("reason") != "close_disagreement":
+                continue
+            ds = i.get("dates")
+            if ds:
+                qdates.setdefault(t, set()).update(str(d)[:10] for d in ds)
+            else:
                 qspans.append((t, i.get("from"), i.get("to")))
-    log(f"     quarantine        : {len(quar)} ticker(s), {len(qspans)} tainted span(s) to mask")
+    log(f"     quarantine        : {len(quar)} ticker(s), "
+        f"{sum(len(v) for v in qdates.values()):,} dated bar(s) to mask"
+        + (f" + {len(qspans)} legacy span(s) with no per-date list" if qspans else ""))
 
     # ---------------------------------------------------------------- D-01 prices
     sep = {}
@@ -265,7 +277,12 @@ def main():
     fp = px["ticker"].map(first_price)
     px["pre_first_price_date"] = (fp.notna() & (px["date"] < fp)).fillna(False)
     px["quarantined"] = False
-    for t, a, b in qspans:                                        # RULE 3
+    if qdates:                                                    # RULE 3, per-bar
+        bad = {f"{t}|{d}" for t, ds in qdates.items() for d in ds}
+        m = (px["ticker"].astype(str) + "|" + px["date"].astype(str)).isin(bad)
+        px.loc[m, "quarantined"] = True
+        px.loc[m & (px["close_source"] == "eodhd"), "close"] = pd.NA
+    for t, a, b in qspans:                                        # legacy endpoint-only entries
         m = (px["ticker"] == t) & (px["date"] >= a) & (px["date"] <= b)
         px.loc[m, "quarantined"] = True
         px.loc[m & (px["close_source"] == "eodhd"), "close"] = pd.NA

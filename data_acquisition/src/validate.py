@@ -357,8 +357,13 @@ def main():
             # Contiguous block ending at a corporate action => EODHD rescaled its whole pre-event
             # history. Isolated days are ordinary vendor glitches; both quarantine, with the span
             # recorded so a consumer can drop just the tainted range.
+            # `dates` is the load-bearing field, not `from`/`to`. Recording only the endpoints
+            # made the span the whole history for most tickers — CHD breached on 21 days and the
+            # range 2000-01-05..2026-07-31 covers 9,704 of them — so build_m1 masked 1,133,450 rows
+            # for 169,146 real disagreements, 38% of the table. Keep every breaching date so a
+            # consumer drops exactly the bad bars. from/to stay for reporting and back-compat.
             add_q(t, "close_disagreement", **{"from": ds[0], "to": ds[-1], "n_rows": len(hits),
-                                              "worst_bps": worst[4],
+                                              "dates": ds, "worst_bps": worst[4],
                                               "systematic": len(hits) > 50})
     report["checks"]["close_cross_check"] = {
         "compared": compared, "n_tickers": len(breaches),
