@@ -73,6 +73,7 @@ import http.client
 import io
 import json
 import os
+import re
 import ssl
 import sys
 import time
@@ -81,6 +82,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+import zlib
 from datetime import datetime, timezone
 
 # SHARADAR_API_KEY is the sharadar.com retail key; NASDAQ_DATA_LINK_API_KEY kept as a back-compat alias.
@@ -280,6 +282,35 @@ def _rows(payload):
     return data if isinstance(data, list) else []
 
 
+def _bulk_prior_rows(out_path):
+    """Row count of the bulk file already on disk, or 0 if there isn't one.
+
+    Prefers the `.meta` sidecar written beside each bulk file (O(1)). Falls back to streaming the
+    gzip and keeping only its last 200 bytes — the trailing `"n_rows":N,"n_tickers":M}` — because
+    gzip cannot be seeked. That walk costs a few seconds on the 240 MB SF1 file and runs once per
+    table per run, which is the right price for not silently discarding 30 years of history."""
+    meta = out_path + ".meta"
+    try:
+        with open(meta) as f:
+            return int(json.load(f).get("n_rows") or 0)
+    except (OSError, ValueError, AttributeError):
+        pass
+    if not os.path.exists(out_path):
+        return 0
+    try:
+        tail = b""
+        with gzip.open(out_path, "rb") as g:
+            while True:
+                chunk = g.read(1 << 20)
+                if not chunk:
+                    break
+                tail = (tail + chunk)[-200:]
+        m = re.search(rb'"n_rows":\s*(\d+)', tail)
+        return int(m.group(1)) if m else 0
+    except (OSError, EOFError, zlib.error):
+        return 0     # unreadable/truncated prior file is not something to protect
+
+
 def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
     """`years=N` -> 302 -> CSV zip, STREAMED to `out_path` as gzipped JSON.
 
@@ -294,6 +325,7 @@ def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     zip_tmp = out_path + ".zip.part"
+    tmp = out_path + ".part"
     try:
         with urllib.request.urlopen(req, timeout=3600, context=_ctx) as r, open(zip_tmp, "wb") as f:
             head = r.read(2)
@@ -308,7 +340,6 @@ def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
         n = 0
         tickers = set()
         lo = hi = None
-        tmp = out_path + ".part"
         with zipfile.ZipFile(zip_tmp) as z, gzip.open(tmp, "wt", encoding="utf-8") as g:
             name = z.namelist()[0]
             g.write('{"vendor":"Sharadar bulk","table":"%s","years":"%s","dimension":%s,'
@@ -332,10 +363,24 @@ def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
                         lo = d if lo is None or d < lo else lo
                         hi = d if hi is None or d > hi else hi
             g.write('],"n_rows":%d,"n_tickers":%d}' % (n, len(tickers)))
+        # SHRINK GUARD, same reasoning as the TICKERS/SP500 snapshot path. This one matters most on
+        # a SUBSCRIPTION CHANGE: `years=full` simply 403s on a lesser plan and fails safely, but a
+        # 10-year plan with `WHOLE_MARKET_YEARS` lowered to match would succeed and replace SF1's
+        # 680,967 rows back to 1992 (and ACTIONS' 673,126 back to 1997, with 19,231 delistings)
+        # with a decade — the survivorship history the whole D-04/D-13/G-01 chain rests on, gone in
+        # one clean-looking run. The .part file is discarded by the finally block below.
+        prior_n = _bulk_prior_rows(out_path)
+        if prior_n and n < prior_n * 0.9:
+            raise RuntimeError(
+                f"refusing to overwrite {out_path}: bulk returned {n:,} rows vs {prior_n:,} held "
+                f"({n / prior_n:.0%}). Lower `years` or a downgraded subscription — history kept.")
         os.replace(tmp, out_path)
+        # Sidecar so the next run's guard is O(1) instead of decompressing the whole file.
+        _dump_json(out_path + ".meta", {"n_rows": n, "n_tickers": len(tickers),
+                                        "from": lo, "to": hi, "years": str(years)})
         return n, len(tickers), lo, hi
     finally:
-        for p in (zip_tmp,):
+        for p in (zip_tmp, tmp):
             try:
                 os.remove(p)
             except OSError:
