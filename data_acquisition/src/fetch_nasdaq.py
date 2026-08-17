@@ -623,6 +623,20 @@ def main():
                         log(f"OK   {table:<14} ALL: {n} [fresh {age_days:.1f}d < {whole_refresh_days}d — skipped] -> {out}")
                         return entry
                 rows, _ = _fetch(endpoint, dict(WHOLE_TABLES.get(table) or {}), label="ALL")
+                # SHRINK GUARD. Unlike every other table here, TICKERS and SP500 are written as a
+                # SNAPSHOT — a plain overwrite, because their rows are current-state metadata that
+                # a merge would accumulate stale copies of. That makes this the one path where a
+                # thinner response silently destroys history: SP500 reaches 1957 only because the
+                # full-history bundle serves it, and a subscription downgrade or a partial vendor
+                # response would replace 59,672 rows with a few hundred and look like a clean run.
+                # A collapse to under 90% of what we hold is treated as a failed fetch: keep the
+                # file, raise, let the retry queue and the manifest surface it.
+                prior = len(_read_existing(out)) if os.path.exists(out) else 0
+                if prior and len(rows) < prior * 0.9:
+                    raise RuntimeError(
+                        f"refusing to overwrite {out}: vendor returned {len(rows):,} rows vs "
+                        f"{prior:,} held ({len(rows) / prior:.0%}). Subscription downgrade or a "
+                        f"truncated response — existing history kept.")
                 _write(out, rows)
                 entry.update(ok=True, count=len(rows), added=len(rows))
                 log(f"OK   {table:<14} ALL: {len(rows)} [snapshot] -> {out}")
