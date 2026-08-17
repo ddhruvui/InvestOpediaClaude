@@ -404,6 +404,8 @@ this is not a fetcher, so it runs locally or anywhere with the volume mirrored).
 |---|---|
 | `raw_prices_eod/` (partitioned by year) | 628,270 — PK `(date, ticker)`, **0 duplicates** |
 | `fundamentals_pit.parquet` | 1,031,271 long-format rows, 97 items |
+| `estimates_pit.parquet` | D-14 consensus + revision trend — PK `(ticker, period, as_of_date)`, **0 duplicates** |
+| `earnings_surprises.parquet` | D-14/D-07 consensus vs actual per quarter, back to ~1995 (median 122/ticker) |
 | `corporate_actions.parquet` | 16,911 |
 | `adjustment_factors/` | 625,255 |
 | `borrow_fees.parquet` | 87,441 |
@@ -424,6 +426,14 @@ this is not a fetcher, so it runs locally or anywhere with the volume mirrored).
 > every restatement vintage — and **95,159 rows share that four-column key**, differing only by
 > `lastupdated`. The PK here is five columns; with `lastupdated` added it is unique (0 duplicates).
 > A T-11-correct read filters on `lastupdated <= t` **and** `filing_datetime <= t`.
+
+> **Estimates carry two grades of vintage and you must not mix them blindly.** `as_of_basis`
+> distinguishes `daily_snapshot` (an exact, dated pull — trust the date literally) from
+> `fundamentals_trend_frozen` (a past period's final `Earnings::Trend` row, which has no vintage
+> stamp and is dated at that period's `reportDate`). Both are safe under `as_of_date <= t`; only
+> the former is a true vintage. Rows for future periods are dated `period_end + 45d` and so
+> self-exclude until they could plausibly have been known. `rev_mom` =
+> `(eps_trend_current - eps_trend_90d) / |eps_trend_90d|`, non-null on every row.
 
 > **`quarantined=True` does not mean "unusable"** once rule 2 has run. It means the vendors
 > disagreed on that span and Sharadar's raw print was used. DD carries the flag *and* the correct

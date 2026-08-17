@@ -14,6 +14,8 @@ OUTPUTS  (OUT_DIR, Parquet unless noted)
     adjustment_factors/       Q-002 cum factor per (date, ticker)
     corporate_actions.parquet D-02/D-03/D-04, one typed table
     fundamentals_pit.parquet  D-05/06 LONG format, PK (ticker, fiscal_period, filing_datetime, item)
+    estimates_pit.parquet     D-14 consensus EPS/revenue + revision trend. PK (ticker, period, as_of_date)
+    earnings_surprises.parquet D-14/D-07 consensus vs actual per quarter, back to ~1995
     borrow_fees.parquet       D-10
     qlib/<TICKER>.csv         the §4 bridge: date,open,close,high,low,volume,factor
     _manifest.json            provenance + row counts + every rule applied
@@ -60,7 +62,7 @@ import os
 import shutil
 import sys
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -74,6 +76,8 @@ ACTIONS_DIR = os.environ.get("ACTIONS_DIR", "/workspace/data_nasdaq/ACTIONS")
 SPLITS_DIR = os.environ.get("SPLITS_DIR", "/workspace/data/splits")
 DIV_DIR = os.environ.get("DIV_DIR", "/workspace/data/dividends")
 TIINGO_DIR = os.environ.get("TIINGO_DIR", "/workspace/data_tiingo")
+FUND_DIR = os.environ.get("FUND_DIR", "/workspace/data/fundamentals")
+EST_DIR = os.environ.get("EST_DIR", "/workspace/data/estimates")
 BORROW_DIR = os.environ.get("BORROW_DIR", "/workspace/data_borrow/history")
 SESSIONS_PATH = os.environ.get("SESSIONS_PATH", "/workspace/data_calendar/XNYS.json")
 TICKERS_PATH = os.environ.get("TICKERS_PATH", "/workspace/data_nasdaq/TICKERS/SHARADAR.json")
@@ -143,6 +147,10 @@ def _write(df, path, partition_year=False):
                 shutil.rmtree(legacy, ignore_errors=True)
         for stale in glob.glob(os.path.join(path, "*.parquet")):
             os.remove(stale)
+        if df.empty:
+            # An empty table has no `date` column to shard on. Emitting nothing (after the stale
+            # sweep above) is the honest result; the manifest records the zero.
+            return 0
         years = pd.to_datetime(df["date"]).dt.year
         for y, g in df.groupby(years):
             g.to_parquet(os.path.join(path, f"part-{int(y)}.parquet"), index=False)
@@ -363,6 +371,128 @@ def main():
     nv = fu.groupby(["ticker", "fiscal_period"])["lastupdated"].nunique() if not fu.empty else pd.Series(dtype=int)
     log(f"OK   fundamentals_pit  : {len(fu):,} rows, {fu['item'].nunique() if not fu.empty else 0} items, "
         f"{int((nv > 1).sum()) if len(nv) else 0} (ticker,period) with >1 vintage")
+
+    # ---------------------------------------------------------------- D-14 analyst estimates
+    # D-14 was written off as "forward-only, rev_mom stays NaN" because no affordable vendor sells
+    # a vintage consensus feed. That conclusion was wrong, and the correction is worth recording:
+    # the EODHD fundamentals blob already pulled nightly carries two estimate histories that
+    # nothing downstream was parsing.
+    #
+    #   Earnings::History  consensus epsEstimate paired with epsActual per fiscal quarter, back to
+    #                      ~1995 (median 123 quarters/ticker across the 500). A genuine analyst
+    #                      surprise series, independent of the SF1-derived SUE.
+    #   Earnings::Trend    per period: epsTrendCurrent against epsTrend{7,30,60,90}daysAgo, plus
+    #                      up/down revision counts and the revenue consensus. Rows for PAST periods
+    #                      stay frozen at their final values rather than being overwritten with
+    #                      today's number (36 of 36 AAPL past periods have current != 90daysAgo),
+    #                      so each is a real revision-momentum observation reaching back to 2017.
+    #
+    # PIT HANDLING is the whole difficulty here. data/estimates/*.json IS a true vintage panel —
+    # one dated snapshot per run — so those rows carry an exact as_of_date and can be trusted
+    # literally. The fundamentals-derived rows carry no vintage stamp, so they are dated at the
+    # period's own reportDate (from Earnings::History, which is the date the number stopped being
+    # a forecast) and marked `as_of_basis`. Anything filtering `as_of_date <= t` is then honest for
+    # both, and a consumer that wants only the exact-vintage rows can select on the basis column.
+    TREND_NUM = {
+        "eps_avg": "earningsEstimateAvg", "eps_low": "earningsEstimateLow",
+        "eps_high": "earningsEstimateHigh", "eps_n_analysts": "earningsEstimateNumberOfAnalysts",
+        "eps_growth": "earningsEstimateGrowth", "eps_year_ago": "earningsEstimateYearAgoEps",
+        "rev_avg": "revenueEstimateAvg", "rev_low": "revenueEstimateLow",
+        "rev_high": "revenueEstimateHigh", "rev_n_analysts": "revenueEstimateNumberOfAnalysts",
+        "rev_growth": "revenueEstimateGrowth",
+        "eps_trend_current": "epsTrendCurrent", "eps_trend_7d": "epsTrend7daysAgo",
+        "eps_trend_30d": "epsTrend30daysAgo", "eps_trend_60d": "epsTrend60daysAgo",
+        "eps_trend_90d": "epsTrend90daysAgo",
+        "eps_rev_up_7d": "epsRevisionsUpLast7days", "eps_rev_up_30d": "epsRevisionsUpLast30days",
+        "eps_rev_dn_7d": "epsRevisionsDownLast7days", "eps_rev_dn_30d": "epsRevisionsDownLast30days",
+    }
+
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _trend_row(t, period, r, as_of, basis):
+        row = {"ticker": t, "permaticker": permatick.get(t), "period": str(period)[:10],
+               "period_type": r.get("period"), "as_of_date": as_of, "as_of_basis": basis}
+        row.update({k: _num(r.get(v)) for k, v in TREND_NUM.items()})
+        return row
+
+    # Iterated directly rather than through _each(): a fundamentals file is one dict, not the list
+    # of rows every other per-ticker feed uses, so _each would skip all 503 of them silently.
+    est, surp, report_date = [], [], {}
+    for p in sorted(glob.glob(os.path.join(FUND_DIR, "*.json"))):
+        t = os.path.basename(p)[:-5]
+        if t.startswith("_"):
+            continue
+        E = (_load(p) or {}).get("Earnings") or {}
+        hist = E.get("History") or {}
+        for period, r in hist.items():
+            if not isinstance(r, dict):
+                continue
+            rd = str(r.get("reportDate") or "")[:10]
+            if rd:
+                report_date[(t, str(period)[:10])] = rd
+            est_v, act_v = _num(r.get("epsEstimate")), _num(r.get("epsActual"))
+            if est_v is None and act_v is None:
+                continue
+            surp.append({
+                "ticker": t, "permaticker": permatick.get(t), "fiscal_period": str(period)[:10],
+                "report_date": rd or None, "before_after_market": r.get("beforeAfterMarket"),
+                "eps_estimate": est_v, "eps_actual": act_v,
+                "eps_difference": _num(r.get("epsDifference")),
+                "surprise_percent": _num(r.get("surprisePercent")),
+            })
+        for period, r in (E.get("Trend") or {}).items():
+            if isinstance(r, dict):
+                # No vintage stamp on these: date them at the report date when we know it, else
+                # period end + 45 days, the conservative outer edge of a US filing deadline.
+                pk = str(period)[:10]
+                rd = report_date.get((t, pk))
+                if not rd:
+                    try:
+                        rd = (datetime.strptime(pk, "%Y-%m-%d") + timedelta(days=45)).date().isoformat()
+                    except ValueError:
+                        rd = None
+                est.append(_trend_row(t, period, r, rd, "fundamentals_trend_frozen"))
+
+    # The exact-vintage half: one dated snapshot per run since the estimates fetcher went live.
+    for t, snaps in _each(EST_DIR):
+        for s in snaps:
+            if not isinstance(s, dict):
+                continue
+            as_of = str(s.get("date") or "")[:10] or None
+            for period, r in (s.get("trend") or {}).items():
+                if isinstance(r, dict):
+                    est.append(_trend_row(t, period, r, as_of, "daily_snapshot"))
+
+    ep = pd.DataFrame(est)
+    if not ep.empty:
+        # An exact vintage always beats an inferred one for the same (ticker, period, date).
+        ep["_rank"] = (ep["as_of_basis"] == "daily_snapshot").astype(int)
+        ep = (ep.sort_values(["ticker", "period", "as_of_date", "_rank"])
+                .drop_duplicates(subset=["ticker", "period", "as_of_date"], keep="last")
+                .drop(columns="_rank"))
+        ep = _prov(ep, "EODHD", "eodhd.com/api/fundamentals::Earnings", snapshot)
+    manifest["tables"]["estimates_pit"] = _write(ep, os.path.join(OUT_DIR, "estimates_pit.parquet"))
+    n_exact = int((ep["as_of_basis"] == "daily_snapshot").sum()) if not ep.empty else 0
+    log(f"OK   estimates_pit     : {len(ep):,} rows, "
+        f"{ep['ticker'].nunique() if not ep.empty else 0} tickers, {n_exact:,} exact-vintage / "
+        f"{len(ep) - n_exact:,} report-dated, "
+        f"{ep['as_of_date'].min() if not ep.empty else '-'}..{ep['as_of_date'].max() if not ep.empty else '-'}")
+
+    sp = pd.DataFrame(surp)
+    if not sp.empty:
+        sp = sp.drop_duplicates(subset=["ticker", "fiscal_period"], keep="last")
+        sp = _prov(sp, "EODHD", "eodhd.com/api/fundamentals::Earnings::History", snapshot)
+        sp = sp.sort_values(["ticker", "fiscal_period"])
+    manifest["tables"]["earnings_surprises"] = _write(
+        sp, os.path.join(OUT_DIR, "earnings_surprises.parquet"))
+    both = sp.dropna(subset=["eps_estimate", "eps_actual"]) if not sp.empty else pd.DataFrame()
+    log(f"OK   earnings_surprises: {len(sp):,} rows, "
+        f"{sp['ticker'].nunique() if not sp.empty else 0} tickers, {len(both):,} with est+actual, "
+        f"{sp['fiscal_period'].min() if not sp.empty else '-'}..{sp['fiscal_period'].max() if not sp.empty else '-'}")
 
     # ---------------------------------------------------------------- D-10 borrow
     b = []
