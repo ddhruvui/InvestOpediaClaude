@@ -254,6 +254,11 @@ both verified live 2026-08-11.
 * iBorrowDesk answers **only** on the `www.` host — the apex completes TLS then returns an empty
   reply with no redirect — and **only** with a browser `User-Agent`; programmatic UAs get 403.
 * IBKR spells class shares with a **space** (`BRK B`, `BF B`); the parser normalises to the dash form.
+* iBorrowDesk spells them with a **dot** (`BRK.B`, `BF.B`) and 404s on the dash. That 404 read as
+  "vendor has no data" and left `BRK-B` and `BF-B` as the only 2 of the 503 with **no** borrow
+  history; both in fact carry the full rolling 259 days. Dashed symbols now retry once under the
+  dot — on 404 only, so a 429/444/503 still raises `Blocked` — and rows are stored under the
+  canonical dash ticker with `ticker_vendor` recording what was asked for. Coverage is **503/503**.
 * The file is pipe-delimited with a `#BOF|date|time` header and a `#EOF` trailer. **A file without
   `#EOF` is a truncated download and is not stored** — freezing a partial borrow snapshot is
   unrecoverable in exactly the way G-05 warns about.

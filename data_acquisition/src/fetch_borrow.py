@@ -238,24 +238,46 @@ def fetch_iborrowdesk(ticker):
     the RunPod slim image and bare macOS pythons both hit this), never on a transient SSLError.
     Narrowing the trigger matters: a blanket `except ssl.SSLError` downgrade turns one flaky
     frame into an unverified channel for the rest of the process. No credential is sent to this
-    host, so the downgrade is bounded; it is still logged into the manifest rather than printed."""
+    host, so the downgrade is bounded; it is still logged into the manifest rather than printed.
+
+    DUAL-CLASS ALIAS. iBorrowDesk keys share classes with a DOT — `BRK.B`, `BF.B` — while our
+    universe (and every other feed here) uses the dash form. The dash spelling 404s, which the
+    caller counted as "vendor has no data" and left BRK-B and BF-B as the only two names in the
+    503 with no borrow history at all. Both return 259 rows under the dot. Rows are still stored
+    under the canonical dash ticker so they join everything else; `ticker_vendor` records what was
+    actually asked for."""
     global _ibd_ctx, _ibd_ctx_warned
-    req = urllib.request.Request(IBD_URL.format(ticker=ticker), headers={"User-Agent": IBD_UA})
-    try:
-        with urllib.request.urlopen(req, timeout=IBD_TIMEOUT, context=_ibd_ctx) as r:
-            payload = json.loads(r.read().decode("utf-8", "replace"))
-    except urllib.error.URLError as e:
-        import ssl
-        if _ibd_ctx is not None or not isinstance(getattr(e, "reason", e),
-                                                  ssl.SSLCertVerificationError):
-            raise
-        if not _ibd_ctx_warned:
-            log("WARN iBorrowDesk: no usable CA bundle — retrying unverified "
-                "(no credential is sent to this host)")
-            _ibd_ctx_warned = True
-        _ibd_ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, timeout=IBD_TIMEOUT, context=_ibd_ctx) as r:
-            payload = json.loads(r.read().decode("utf-8", "replace"))
+
+    def _open(sym):
+        global _ibd_ctx, _ibd_ctx_warned
+        req = urllib.request.Request(IBD_URL.format(ticker=sym), headers={"User-Agent": IBD_UA})
+        try:
+            with urllib.request.urlopen(req, timeout=IBD_TIMEOUT, context=_ibd_ctx) as r:
+                return json.loads(r.read().decode("utf-8", "replace"))
+        except urllib.error.URLError as e:
+            import ssl
+            if _ibd_ctx is not None or not isinstance(getattr(e, "reason", e),
+                                                      ssl.SSLCertVerificationError):
+                raise
+            if not _ibd_ctx_warned:
+                log("WARN iBorrowDesk: no usable CA bundle — retrying unverified "
+                    "(no credential is sent to this host)")
+                _ibd_ctx_warned = True
+            _ibd_ctx = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, timeout=IBD_TIMEOUT, context=_ibd_ctx) as r:
+                return json.loads(r.read().decode("utf-8", "replace"))
+
+    # Only dashed symbols get a second attempt, and only on a 404 — a 429/444/503 is the vendor
+    # refusing us and must propagate to the Blocked handling, not be retried under another name.
+    aliases = [ticker] + ([ticker.replace("-", ".")] if "-" in ticker else [])
+    payload, vendor_sym = None, ticker
+    for i, sym in enumerate(aliases):
+        try:
+            payload, vendor_sym = _open(sym), sym
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 404 or i == len(aliases) - 1:
+                raise
     out = []
     for row in (payload.get("daily") or []):
         date = str(row.get("date") or "")[:10]
@@ -274,6 +296,7 @@ def fetch_iborrowdesk(ticker):
             "fee_bps_yr_low": None if row.get("low_fee") is None else round(float(row["low_fee"]) * 100, 4),
             "fee_bps_yr_open": None if row.get("open_fee") is None else round(float(row["open_fee"]) * 100, 4),
             "available_low": row.get("low_available"),
+            "ticker_vendor": vendor_sym,
             "source": "iborrowdesk",
         })
     return out, payload
