@@ -288,6 +288,11 @@ def _fetch_estimates(symbol, from_date):
     # config/tickers.json runs both `fundamentals` and `estimates` over the same 503 names, calling
     # it separately billed 10,060 credits/run where 5,030 buys the identical bytes — verified live:
     # fundamentals/AAPL.US?filter=Earnings::Trend == fundamentals/AAPL.US -> ["Earnings"]["Trend"].
+    #
+    # Shape note: since the switch to v1.1 (see _fundamentals) this is {Quarterly: {...},
+    # Annual: {...}}, not the old flat date-keyed map. Snapshots written before 2026-08-17 are the
+    # flat v1 shape and their fiscal-Q4 entries hold the ANNUAL figure; build_m1 detects the shape
+    # and tags the legacy rows `ambiguous_v1_flat` rather than pretending they are quarterly.
     payload = (_fundamentals(symbol).get("Earnings") or {}).get("Trend")
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return [{"date": stamp, "trend": payload}]
@@ -347,9 +352,18 @@ def _fundamentals(symbol):
     would couple `estimates` to a prior successful snapshot write and could serve a stale
     prior-run object into today's PIT snapshot. The cache is keyed by symbol and cleared as the
     per-ticker loop advances, so whichever of {fundamentals, estimates} runs first pays, the other
-    is free, and the order in `datasets` stops mattering."""
+    is free, and the order in `datasets` stops mattering.
+
+    v1.1, NOT v1 — this is a correctness fix, not a version bump. The v1 endpoint returns
+    `Earnings::Trend` as one flat date-keyed map, so a company's fiscal-Q4 row and its ANNUAL row
+    share a key and the annual value wins. AAPL's Sep-2017 quarterly estimate is 1.87; v1 reports
+    9.00 there, the FY number, ~5x too high, silently. 10 of AAPL's 39 quarterly periods are
+    corrupted this way — every fiscal Q4 since 2017. v1.1 nests the block as
+    {Quarterly: {...}, Annual: {...}} and returns 39 + 11 = 50 rows where v1 returns 40.
+    Verified live 2026-08-17: every other top-level block is byte-identical between the two
+    versions (13 keys, no field differences), so this costs nothing and breaks no other consumer."""
     if symbol not in _FUND_CACHE:
-        payload = _get(f"fundamentals/{symbol}", {"api_token": TOKEN})
+        payload = _get(f"v1.1/fundamentals/{symbol}", {"api_token": TOKEN})
         if not isinstance(payload, dict):
             raise RuntimeError("fundamentals: expected object")
         _FUND_CACHE.clear()          # one ticker in flight at a time — bound the 950 KB objects

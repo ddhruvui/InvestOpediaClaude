@@ -434,6 +434,13 @@ this is not a fetcher, so it runs locally or anywhere with the volume mirrored).
 > the former is a true vintage. Rows for future periods are dated `period_end + 45d` and so
 > self-exclude until they could plausibly have been known. `rev_mom` =
 > `(eps_trend_current - eps_trend_90d) / |eps_trend_90d|`, non-null on every row.
+>
+> Two further traps: `period_frequency='ambiguous_v1_flat'` marks rows pulled before the v1.1
+> switch, whose **fiscal-Q4 values are the ANNUAL figure** (AAPL Sep-2017 reads 9.00, not 1.87) —
+> exclude them from quarterly work. And `split_adjusted=False` is literal: `Trend` is not
+> retroactively split-adjusted while `earnings_surprises` (from `Earnings::History`) is, so the two
+> are on **different share bases** and must not be level-joined across a split. `rev_mom` survives
+> both, being a within-row ratio.
 
 > **`quarantined=True` does not mean "unusable"** once rule 2 has run. It means the vendors
 > disagreed on that span and Sharadar's raw print was used. DD carries the flag *and* the correct

@@ -52,6 +52,12 @@ RULES THIS ENFORCES (each one cost real debugging to find; see README "Reading t
 
  8. PROVENANCE (§3).  vendor / pulled_at_utc / source_endpoint / data_snapshot_id on every table.
 
+ 9. ESTIMATE SHARE BASIS.  `Earnings::Trend` is NOT retroactively split-adjusted; `Earnings::
+    History` IS. AAPL's FY2019 estimate vintage reads 11.68 and FY2020 reads 3.24 across the
+    Aug-2020 4:1 — a basis change, not a forecast collapse. estimates_pit therefore carries
+    `split_adjusted=False` and must not be level-joined to earnings_surprises across a split.
+    rev_mom is unaffected: it is a ratio of two legs inside one row, which share a basis.
+
     OUT_DIR=./m1 EOD_DIR=./data SEP_DIR=./data_nasdaq/SEP ... python3 src/build_m1.py
 """
 import glob
@@ -413,11 +419,31 @@ def main():
         except (TypeError, ValueError):
             return None
 
-    def _trend_row(t, period, r, as_of, basis):
+    def _trend_row(t, period, r, as_of, basis, freq):
         row = {"ticker": t, "permaticker": permatick.get(t), "period": str(period)[:10],
-               "period_type": r.get("period"), "as_of_date": as_of, "as_of_basis": basis}
+               "period_type": r.get("period"), "period_frequency": freq,
+               "as_of_date": as_of, "as_of_basis": basis}
         row.update({k: _num(r.get(v)) for k, v in TREND_NUM.items()})
         return row
+
+    def _trend_blocks(trend):
+        """Yield (frequency, date_keyed_map) for either Trend shape.
+
+        v1.1 nests as {Quarterly: {...}, Annual: {...}}. v1 returned ONE flat date-keyed map in
+        which a fiscal-Q4 row and the annual row collide on the same key and the annual value wins
+        — AAPL's Sep-2017 quarterly estimate reads 9.00 (the FY figure) instead of 1.87, and 10 of
+        its 39 quarterly periods are corrupted that way. Those legacy rows cannot be repaired after
+        the fact, so they are tagged `ambiguous_v1_flat` and a consumer computing quarterly
+        surprise must exclude them. Snapshots written from 2026-08-17 are v1.1 and are clean."""
+        if not isinstance(trend, dict) or not trend:
+            return
+        if set(trend) & {"Quarterly", "Annual"}:
+            for freq in ("Quarterly", "Annual"):
+                sub = trend.get(freq)
+                if isinstance(sub, dict):
+                    yield freq.lower(), sub
+        else:
+            yield "ambiguous_v1_flat", trend
 
     # Iterated directly rather than through _each(): a fundamentals file is one dict, not the list
     # of rows every other per-ticker feed uses, so _each would skip all 503 of them silently.
@@ -444,8 +470,10 @@ def main():
                 "eps_difference": _num(r.get("epsDifference")),
                 "surprise_percent": _num(r.get("surprisePercent")),
             })
-        for period, r in (E.get("Trend") or {}).items():
-            if isinstance(r, dict):
+        for freq, block in _trend_blocks(E.get("Trend")):
+            for period, r in block.items():
+                if not isinstance(r, dict):
+                    continue
                 # No vintage stamp on these: date them at the report date when we know it, else
                 # period end + 45 days, the conservative outer edge of a US filing deadline.
                 pk = str(period)[:10]
@@ -455,7 +483,7 @@ def main():
                         rd = (datetime.strptime(pk, "%Y-%m-%d") + timedelta(days=45)).date().isoformat()
                     except ValueError:
                         rd = None
-                est.append(_trend_row(t, period, r, rd, "fundamentals_trend_frozen"))
+                est.append(_trend_row(t, period, r, rd, "fundamentals_trend_frozen", freq))
 
     # The exact-vintage half: one dated snapshot per run since the estimates fetcher went live.
     for t, snaps in _each(EST_DIR):
@@ -463,24 +491,36 @@ def main():
             if not isinstance(s, dict):
                 continue
             as_of = str(s.get("date") or "")[:10] or None
-            for period, r in (s.get("trend") or {}).items():
-                if isinstance(r, dict):
-                    est.append(_trend_row(t, period, r, as_of, "daily_snapshot"))
+            for freq, block in _trend_blocks(s.get("trend")):
+                for period, r in block.items():
+                    if isinstance(r, dict):
+                        est.append(_trend_row(t, period, r, as_of, "daily_snapshot", freq))
 
     ep = pd.DataFrame(est)
     if not ep.empty:
-        # An exact vintage always beats an inferred one for the same (ticker, period, date).
+        # PK carries period_frequency: a quarterly and an annual estimate legitimately share a
+        # period-end date (that collision is exactly what broke the v1 endpoint). An exact vintage
+        # beats an inferred one when both describe the same (ticker, period, frequency, date).
+        PK = ["ticker", "period", "period_frequency", "as_of_date"]
         ep["_rank"] = (ep["as_of_basis"] == "daily_snapshot").astype(int)
-        ep = (ep.sort_values(["ticker", "period", "as_of_date", "_rank"])
-                .drop_duplicates(subset=["ticker", "period", "as_of_date"], keep="last")
+        ep = (ep.sort_values(PK + ["_rank"]).drop_duplicates(subset=PK, keep="last")
                 .drop(columns="_rank"))
-        ep = _prov(ep, "EODHD", "eodhd.com/api/fundamentals::Earnings", snapshot)
+        # RULE 9: Trend is NOT retroactively split-adjusted, Earnings::History IS. AAPL's FY2019
+        # vintage reads 11.68 and FY2020 reads 3.24 across the Aug-2020 4:1 — a basis break, not a
+        # collapse in expectations. Levels are therefore NOT comparable across a split and must not
+        # be joined to earnings_surprises without adjustment. Ratios WITHIN a row (current vs
+        # 90d-ago, i.e. rev_mom) are safe: both legs share one basis.
+        ep["split_adjusted"] = False
+        ep = _prov(ep, "EODHD", "eodhd.com/api/v1.1/fundamentals::Earnings::Trend", snapshot)
     manifest["tables"]["estimates_pit"] = _write(ep, os.path.join(OUT_DIR, "estimates_pit.parquet"))
     n_exact = int((ep["as_of_basis"] == "daily_snapshot").sum()) if not ep.empty else 0
+    n_amb = int((ep["period_frequency"] == "ambiguous_v1_flat").sum()) if not ep.empty else 0
     log(f"OK   estimates_pit     : {len(ep):,} rows, "
         f"{ep['ticker'].nunique() if not ep.empty else 0} tickers, {n_exact:,} exact-vintage / "
         f"{len(ep) - n_exact:,} report-dated, "
-        f"{ep['as_of_date'].min() if not ep.empty else '-'}..{ep['as_of_date'].max() if not ep.empty else '-'}")
+        f"{ep['as_of_date'].min() if not ep.empty else '-'}..{ep['as_of_date'].max() if not ep.empty else '-'}"
+        + (f"  [{n_amb:,} legacy v1-flat rows: fiscal-Q4 values are ANNUAL, exclude for quarterly work]"
+           if n_amb else ""))
 
     sp = pd.DataFrame(surp)
     if not sp.empty:
