@@ -93,6 +93,9 @@ API = "https://api.sharadar.com/v1.0/data"
 # logical table (spec/config) -> api.sharadar.com endpoint name
 ENDPOINT = {"SEP": "stocks", "SF1": "fundamentals", "ACTIONS": "actions",
             "TICKERS": "tickers", "SP500": "sp500"}
+# Column whose value-counts are tracked run-to-run, so a critical minority (e.g. ACTIONS
+# `delisted`) cannot collapse unnoticed behind a healthy total-row count.
+CAT_COL = {"actions": "action", "fundamentals": "dimension"}
 # Server-side row cap on ANY single response. THIS MOVES — measured at 100,000 on 2026-08-13 and
 # TIGHTENED TO 10,000 by 2026-08-14, at which point limit=10001 returns
 # HTTP 400 "limit too large ... format=json accepts at most 10,000 rows". Asking for more than the
@@ -282,21 +285,23 @@ def _rows(payload):
     return data if isinstance(data, list) else []
 
 
-def _bulk_prior_rows(out_path):
-    """Row count of the bulk file already on disk, or 0 if there isn't one.
+def _bulk_prior(out_path):
+    """(n_rows, categories) for the bulk file already on disk, or (0, {}) if there isn't one.
 
     Prefers the `.meta` sidecar written beside each bulk file (O(1)). Falls back to streaming the
     gzip and keeping only its last 200 bytes — the trailing `"n_rows":N,"n_tickers":M}` — because
     gzip cannot be seeked. That walk costs a few seconds on the 240 MB SF1 file and runs once per
-    table per run, which is the right price for not silently discarding 30 years of history."""
+    table per run, which is the right price for not silently discarding 30 years of history. The
+    fallback cannot recover per-category counts; those only exist from the first sidecar onward."""
     meta = out_path + ".meta"
     try:
         with open(meta) as f:
-            return int(json.load(f).get("n_rows") or 0)
+            d = json.load(f)
+        return int(d.get("n_rows") or 0), (d.get("categories") or {})
     except (OSError, ValueError, AttributeError):
         pass
     if not os.path.exists(out_path):
-        return 0
+        return 0, {}
     try:
         tail = b""
         with gzip.open(out_path, "rb") as g:
@@ -306,9 +311,9 @@ def _bulk_prior_rows(out_path):
                     break
                 tail = (tail + chunk)[-200:]
         m = re.search(rb'"n_rows":\s*(\d+)', tail)
-        return int(m.group(1)) if m else 0
+        return (int(m.group(1)) if m else 0), {}
     except (OSError, EOFError, zlib.error):
-        return 0     # unreadable/truncated prior file is not something to protect
+        return 0, {}     # unreadable/truncated prior file is not something to protect
 
 
 def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
@@ -339,6 +344,7 @@ def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
                 f.write(chunk)
         n = 0
         tickers = set()
+        cats = {}          # value-counts of the table's category column
         lo = hi = None
         with zipfile.ZipFile(zip_tmp) as z, gzip.open(tmp, "wt", encoding="utf-8") as g:
             name = z.namelist()[0]
@@ -357,6 +363,10 @@ def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
                     t = row.get("ticker")
                     if t:
                         tickers.add(t)
+                    if CAT_COL.get(endpoint):
+                        cv = row.get(CAT_COL[endpoint])
+                        if cv:
+                            cats[cv] = cats.get(cv, 0) + 1
                     d = row.get("calendardate") or row.get("date")
                     if d:
                         d = str(d)[:10]
@@ -369,7 +379,18 @@ def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
         # 680,967 rows back to 1992 (and ACTIONS' 673,126 back to 1997, with 19,231 delistings)
         # with a decade — the survivorship history the whole D-04/D-13/G-01 chain rests on, gone in
         # one clean-looking run. The .part file is discarded by the finally block below.
-        prior_n = _bulk_prior_rows(out_path)
+        prior_n, prior_cats = _bulk_prior(out_path)
+        # SUB-POPULATION CHECK. A total-row guard is blind to a critical minority collapsing:
+        # ACTIONS went 673,126 -> 668,409 rows (-0.7%, well inside the 90% floor) while `delisted`
+        # went 19,231 -> 18,157 (-5.6%) — and delistings are the entire point of the
+        # survivorship-free pull. This does NOT block, because a vendor pruning duplicate or
+        # erroneous records is legitimate and indistinguishable from here; it makes the move loud
+        # instead of invisible so it can be judged rather than discovered months later.
+        for k, was in sorted((prior_cats or {}).items()):
+            now = cats.get(k, 0)
+            if was >= 100 and now < was * 0.95:
+                log(f"WARN {endpoint:<10} category {k!r} shrank {was:,} -> {now:,} "
+                    f"({now / was - 1:+.1%}) while the table moved {n / max(prior_n, 1) - 1:+.1%}")
         if prior_n and n < prior_n * 0.9:
             raise RuntimeError(
                 f"refusing to overwrite {out_path}: bulk returned {n:,} rows vs {prior_n:,} held "
@@ -377,7 +398,8 @@ def _stream_bulk_zip(endpoint, years, out_path, dimension=None):
         os.replace(tmp, out_path)
         # Sidecar so the next run's guard is O(1) instead of decompressing the whole file.
         _dump_json(out_path + ".meta", {"n_rows": n, "n_tickers": len(tickers),
-                                        "from": lo, "to": hi, "years": str(years)})
+                                        "from": lo, "to": hi, "years": str(years),
+                                        "categories": cats})
         return n, len(tickers), lo, hi
     finally:
         for p in (zip_tmp, tmp):

@@ -72,7 +72,14 @@ launch_vendor() {
   # the same. Override globally with RUNPOD_VCPU.
   VCPU="${RUNPOD_VCPU:-2}"
   case "$VENDOR" in
-    nasdaq|m1|post) VCPU="${RUNPOD_VCPU:-4}" ;;
+    # nasdaq no longer needs 8 GB: _stream_bulk_zip made the whole-market pull constant-memory
+    # (~99 MB peak) after the buffered version SIGKILLed a 4 GB pod on full-history SF1. The stale
+    # 4-vCPU request became pure cost — on 2026-08-18 it failed 24 capacity retries over an hour in
+    # EU-RO-1 while 2 vCPU placed immediately and completed 1,513 jobs with 0 failures, including
+    # both bulk zips (SF1 681,727 rows, ACTIONS 668,409). m1/post still ask for 4: they hold whole
+    # tables in pandas, which streaming does not help.
+    nasdaq)        VCPU="${RUNPOD_VCPU:-2}" ;;
+    m1|post)       VCPU="${RUNPOD_VCPU:-4}" ;;
   esac
   case "$VENDOR" in
     eodhd)
