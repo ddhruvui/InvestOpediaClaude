@@ -77,9 +77,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 # One token = whole universe; a second token (TIINGO_API_TOKEN2) splits it half/half (see docstring).
+# A stored file may legitimately start later than the configured `from`: that date is a calendar
+# day, the data starts on the first SESSION on or after it. Slack absorbs a New Year/holiday
+# weekend without masking a real widening, which always moves the window by months or years.
+STALE_GAP_TOLERANCE_DAYS = int(os.environ.get("TIINGO_STALE_GAP_DAYS", "14"))
 TOKENS = [t for t in (os.environ.get("TIINGO_API_TOKEN", "").strip(),
                       os.environ.get("TIINGO_API_TOKEN2", "").strip()) if t]
 DATA_DIR = os.environ.get("DATA_DIR", "/workspace/data_tiingo")
@@ -295,6 +299,14 @@ def _write(out_path, data, indent=None):
     os.replace(tmp, out_path)
 
 
+def _days_between(a, b):
+    """b - a in days for two ISO dates; 0 if either is unparseable."""
+    try:
+        return (date.fromisoformat(b) - date.fromisoformat(a)).days
+    except (TypeError, ValueError):
+        return 0
+
+
 def _fresh(path, skip_fresh_days, want_from=None):
     """True if the file exists and was refreshed within skip_fresh_days (resume across paced runs).
 
@@ -310,7 +322,14 @@ def _fresh(path, skip_fresh_days, want_from=None):
     if want_from:
         rows = _read_existing(path)
         dates = [str(r.get("date"))[:10] for r in rows if isinstance(r, dict) and r.get("date")]
-        if dates and min(dates) > want_from:
+        # TOLERANCE, not a bare `>`. `want_from` is a CALENDAR date; the data can only start on the
+        # first SESSION on or after it. With from=2000-01-01 (a Saturday) every complete file starts
+        # 2000-01-03, so a strict comparison called every ticker stale on every run — 503 full
+        # re-pulls of ~6,700 rows a night into a free tier that allows ~50 req/hr. That is what
+        # walked this job into 20 rate-limit sleeps and an 8-hour watchdog kill with 316/503 done.
+        # A real widening moves the window by months or years, so a fortnight of slack cannot mask
+        # one while it does absorb any New Year / holiday weekend.
+        if dates and _days_between(want_from, min(dates)) > STALE_GAP_TOLERANCE_DAYS:
             return False
     return True
 
