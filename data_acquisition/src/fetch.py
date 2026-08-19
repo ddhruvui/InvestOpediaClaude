@@ -67,7 +67,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 TOKEN = os.environ.get("EODHD_API_TOKEN", "")
 DATA_DIR = os.environ.get("DATA_DIR", "/workspace/data")
@@ -530,17 +530,30 @@ def _bulk_unsettled(path, session_date):
     return (written - session_date).days < BULK_RESETTLE_DAYS
 
 
-def _bulk_row_floor(bulk_dir):
-    """Median row count of already-stored SESSION day-files, times BULK_MIN_ROWS_FRAC.
+def _bulk_row_floor(bulk_dir, near_date=None, sample=12):
+    """Median row count of stored day-files NEAREST IN DATE to `near_date`, times the fraction.
 
-    Used to reject a partial publication. Returns 0 (no floor) until enough files exist to make a
-    median meaningful — a cold backfill must not refuse its own first days."""
+    ERA-LOCAL ON PURPOSE. The first version took the 20 newest files, which measures a backfill
+    against today's market breadth. Walking into 2008 that put the floor at 25,205 while a real
+    2008 session carries ~21,000 rows, so 879 complete days were fetched, rejected and re-queued
+    in ONE run — ~88,000 credits spent to store 2 files, and it would have repeated every night
+    with the backfill permanently stalled at 2007-10-31. US listed-security counts roughly halve
+    going back two decades, so any fixed floor is wrong at one end of the range.
+
+    Returns 0 (no floor) until enough neighbours exist to make a median meaningful — a cold
+    backfill must not refuse its own first days."""
     try:
-        names = [n for n in os.listdir(bulk_dir) if n.endswith(".json")]
+        names = [n for n in os.listdir(bulk_dir) if n.endswith(".json") and not n.startswith("_")]
     except OSError:
         return 0
+    if near_date:
+        # Nearest by date distance, not lexicographic order.
+        names.sort(key=lambda n: abs((date.fromisoformat(n[:-5]) - near_date).days)
+                   if _isodate(n[:-5]) else 10 ** 6)
+    else:
+        names.sort(reverse=True)
     counts = []
-    for n in sorted(names, reverse=True)[:20]:
+    for n in names[:sample]:
         try:
             with open(os.path.join(bulk_dir, n)) as f:
                 rows = json.load(f)
@@ -552,6 +565,14 @@ def _bulk_row_floor(bulk_dir):
         return 0
     counts.sort()
     return int(counts[len(counts) // 2] * BULK_MIN_ROWS_FRAC)
+
+
+def _isodate(s):
+    try:
+        date.fromisoformat(s)
+        return True
+    except ValueError:
+        return False
 
 
 def _credit_budget():
@@ -774,7 +795,8 @@ def main():
                  "ok": True, "count": 0, "added": 0, "error": None}
         bulk_dir = os.path.join(DATA_DIR, "eod_bulk", bex)
         sessions = _load_sessions()
-        row_floor = _bulk_row_floor(bulk_dir)
+        row_floor = _bulk_row_floor(bulk_dir, near_date=bend)
+        recent_counts = []      # rolling row counts stored THIS run, to track breadth backwards
         fetched = skipped = consec_fail = nonsession = deferred = 0
         more = False
         d = bend
@@ -807,6 +829,13 @@ def main():
                             more = True
                         elif rows:
                             _write(out, rows); fetched += 1
+                            # Re-base the floor on what this era actually looks like. Without it a
+                            # single seed from the resume point drifts wrong over a multi-year walk.
+                            recent_counts.append(len(rows))
+                            if len(recent_counts) >= 5:
+                                recent_counts = recent_counts[-25:]
+                                mid = sorted(recent_counts)[len(recent_counts) // 2]
+                                row_floor = int(mid * BULK_MIN_ROWS_FRAC)
                         elif (today_utc - d).days > 5:
                             _write(out, rows); fetched += 1  # settled no-data day — cache [] so we never re-probe
                         else:
