@@ -96,6 +96,8 @@ BULK_TODAY_CUTOFF_UTC_HOUR = int(os.environ.get("BULK_TODAY_CUTOFF_UTC_HOUR", "2
 # A session whose file comes back with far fewer rows than a normal session is a partial
 # publication, not a quiet day. Don't freeze it; leave it for the next run.
 BULK_MIN_ROWS_FRAC = float(os.environ.get("BULK_MIN_ROWS_FRAC", "0.5"))
+# Consecutive partial-rejections before the floor itself is treated as the suspect.
+BULK_PARTIAL_PATIENCE = int(os.environ.get("BULK_PARTIAL_PATIENCE", "8"))
 # SETTLING WINDOW. A bulk day-file is NOT final on the evening of its session — EODHD keeps
 # revising it for days. Measured 2026-08-12 on the 2026-08-10 file: pulled ~19 h after the close it
 # had 44,767 rows; 34 h later the same date returned 50,368 (+5,601 codes, 5,563 of them ordinary
@@ -567,6 +569,19 @@ def _bulk_row_floor(bulk_dir, near_date=None, sample=12):
     return int(counts[len(counts) // 2] * BULK_MIN_ROWS_FRAC)
 
 
+def _bulk_frontier(bulk_dir):
+    """Oldest stored day-file date — where a backwards backfill actually resumes.
+
+    This, not the window end, is the era the next fetch lands in. Seeding the floor from `bend`
+    (the newest date) reproduced exactly the 2026-relative baseline it was meant to replace."""
+    try:
+        ds = [n[:-5] for n in os.listdir(bulk_dir)
+              if n.endswith(".json") and not n.startswith("_") and _isodate(n[:-5])]
+    except OSError:
+        return None
+    return date.fromisoformat(min(ds)) if ds else None
+
+
 def _isodate(s):
     try:
         date.fromisoformat(s)
@@ -795,8 +810,12 @@ def main():
                  "ok": True, "count": 0, "added": 0, "error": None}
         bulk_dir = os.path.join(DATA_DIR, "eod_bulk", bex)
         sessions = _load_sessions()
-        row_floor = _bulk_row_floor(bulk_dir, near_date=bend)
+        _frontier = _bulk_frontier(bulk_dir)
+        row_floor = _bulk_row_floor(bulk_dir, near_date=_frontier or bend)
+        log(f"     eod_bulk row floor: {row_floor:,} "
+            f"(seeded from files near {_frontier or bend}, frac {BULK_MIN_ROWS_FRAC})")
         recent_counts = []      # rolling row counts stored THIS run, to track breadth backwards
+        partial_counts = []     # row counts REJECTED as partial — evidence the floor is wrong
         fetched = skipped = consec_fail = nonsession = deferred = 0
         more = False
         d = bend
@@ -827,12 +846,29 @@ def main():
                                 f"(< floor {row_floor}) — looks partial, not storing; retry next run")
                             deferred += 1
                             more = True
+                            partial_counts.append(len(rows))
+                            # SELF-CORRECTION. N consecutive "partials" is overwhelming evidence the
+                            # FLOOR is wrong, not that the vendor published N bad days in a row. Left
+                            # unchecked this rejected 879 complete sessions and spent ~88,000 credits
+                            # to store one file — twice, because the first fix seeded the floor from
+                            # the wrong end of the window. Re-base on what the vendor is actually
+                            # returning and carry on, loudly.
+                            if len(partial_counts) >= BULK_PARTIAL_PATIENCE:
+                                mid = sorted(partial_counts)[len(partial_counts) // 2]
+                                new_floor = int(mid * BULK_MIN_ROWS_FRAC)
+                                if new_floor < row_floor:
+                                    log(f"WARN eod_bulk {bex}: {len(partial_counts)} consecutive "
+                                        f"rejections — the floor ({row_floor:,}) does not match this "
+                                        f"era (median {mid:,}). Re-basing to {new_floor:,}.")
+                                    row_floor = new_floor
+                                partial_counts = []
                         elif rows:
                             _write(out, rows); fetched += 1
                             # Re-base the floor on what this era actually looks like. Without it a
                             # single seed from the resume point drifts wrong over a multi-year walk.
+                            partial_counts = []
                             recent_counts.append(len(rows))
-                            if len(recent_counts) >= 5:
+                            if len(recent_counts) >= 3:
                                 recent_counts = recent_counts[-25:]
                                 mid = sorted(recent_counts)[len(recent_counts) // 2]
                                 row_floor = int(mid * BULK_MIN_ROWS_FRAC)
