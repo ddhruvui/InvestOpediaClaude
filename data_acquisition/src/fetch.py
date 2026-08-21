@@ -120,6 +120,7 @@ STORE_LOGS = os.environ.get("STORE_LOGS", "").strip().lower() in ("1", "true", "
 _ctx = None  # default = verified TLS; falls back to unverified if CA bundle is missing
 _LOG_LINES = []  # captured stdout, persisted to logs/ on success (if STORE_LOGS) or always on failure
 _FUND_CACHE = {}  # {symbol: fundamentals object} — one entry; shared by `fundamentals`+`estimates`
+_EARLY_CLOSES = set()  # D-11 half-day sessions; filled by _load_sessions, read by the bulk floor
 
 
 def log(msg):
@@ -507,8 +508,11 @@ def _load_sessions():
             payload = json.load(f)
         sessions = set(payload.get("sessions") or [])
         if sessions:
+            global _EARLY_CLOSES
+            _EARLY_CLOSES = set(payload.get("early_closes") or ())
             log(f"     eod_bulk: using D-11 session calendar {payload.get('calendar')} "
-                f"({len(sessions)} sessions, exchange_calendars {payload.get('package_version')})")
+                f"({len(sessions)} sessions, {len(_EARLY_CLOSES)} early closes, "
+                f"exchange_calendars {payload.get('package_version')})")
             return sessions
     except (FileNotFoundError, ValueError, AttributeError):
         pass
@@ -598,6 +602,13 @@ def _credit_budget():
     try:
         d = _get("user", {"api_token": TOKEN, "fmt": "json"})
         used, cap = int(d["apiRequests"]), int(d["dailyRateLimit"])
+        # Purchased add-on calls land in a separate `extraLimit` field, not in `dailyRateLimit`
+        # (verified live 2026-08-21: 99,999/100,000 used + extraLimit 100,000 -> the gate read
+        # "1 left" and skipped the run while 100k paid credits sat unused). Spend against the sum.
+        extra = int(d.get("extraLimit") or 0)
+        if extra:
+            log(f"     credit add-on: extraLimit {extra:,} on top of the {cap:,} daily cap")
+        cap += extra
         # The counter resets LAZILY, on the first billable request of a new GMT day — a /user call
         # does not trigger it. So just after midnight it still reports YESTERDAY's date and
         # yesterday's (often exhausted) total. Taking that at face value would make this preflight
@@ -814,6 +825,8 @@ def main():
         row_floor = _bulk_row_floor(bulk_dir, near_date=_frontier or bend)
         log(f"     eod_bulk row floor: {row_floor:,} "
             f"(seeded from files near {_frontier or bend}, frac {BULK_MIN_ROWS_FRAC})")
+        seed_floor = row_floor  # frontier-era floor — restored when the walk jumps eras
+        last_stored = None      # date of the last file STORED this run, to detect era jumps
         recent_counts = []      # rolling row counts stored THIS run, to track breadth backwards
         partial_counts = []     # row counts REJECTED as partial — evidence the floor is wrong
         fetched = skipped = consec_fail = nonsession = deferred = 0
@@ -839,11 +852,28 @@ def main():
                     try:
                         rows = _fetch_eod_bulk_day(bex, iso)
                         consec_fail = 0
-                        if rows and row_floor and len(rows) < row_floor:
+                        # ERA JUMP. The walk re-pulls a handful of RECENT files (settling window)
+                        # before leaping decades back to the frontier tail, and rolling breadth
+                        # from the recent era must not police the old one: measured 2026-08-21,
+                        # five ~50k-row 2026 re-pulls re-based the floor to 25,007, which then
+                        # rejected 38 complete ~18.6k-row 2004 sessions as "partial" (3,800
+                        # credits wasted, 38 holes). On a jump, fall back to the frontier seed.
+                        if last_stored is not None and abs((last_stored - d).days) > 90:
+                            recent_counts = []
+                            if row_floor != seed_floor:
+                                log(f"     eod_bulk era jump {last_stored} -> {iso}: "
+                                    f"floor reset {row_floor:,} -> seed {seed_floor:,}")
+                            row_floor = seed_floor
+                        # A half-day prints roughly half the names, so the full-session floor
+                        # rejects every early close forever (measured 2026-08-21: 2008-07-03 has
+                        # 18,815 rows vs floor 25,043 — re-fetched and re-billed nightly, never
+                        # stored). Judge early closes against half the floor.
+                        floor_here = row_floor // 2 if iso in _EARLY_CLOSES else row_floor
+                        if rows and floor_here and len(rows) < floor_here:
                             # Partial publication: a session file this short is not a quiet day.
                             # Freezing it would be permanent (resume skips any existing file).
                             log(f"WARN eod_bulk {bex} {iso}: only {len(rows)} rows "
-                                f"(< floor {row_floor}) — looks partial, not storing; retry next run")
+                                f"(< floor {floor_here}) — looks partial, not storing; retry next run")
                             deferred += 1
                             more = True
                             partial_counts.append(len(rows))
@@ -861,19 +891,24 @@ def main():
                                         f"rejections — the floor ({row_floor:,}) does not match this "
                                         f"era (median {mid:,}). Re-basing to {new_floor:,}.")
                                     row_floor = new_floor
+                                    recent_counts = []  # wrong-era evidence — one store must not re-base it back up
                                 partial_counts = []
                         elif rows:
                             _write(out, rows); fetched += 1
+                            last_stored = d
                             # Re-base the floor on what this era actually looks like. Without it a
                             # single seed from the resume point drifts wrong over a multi-year walk.
+                            # Early closes are excluded: their halved breadth would drag the median.
                             partial_counts = []
-                            recent_counts.append(len(rows))
+                            if iso not in _EARLY_CLOSES:
+                                recent_counts.append(len(rows))
                             if len(recent_counts) >= 3:
                                 recent_counts = recent_counts[-25:]
                                 mid = sorted(recent_counts)[len(recent_counts) // 2]
                                 row_floor = int(mid * BULK_MIN_ROWS_FRAC)
                         elif (today_utc - d).days > 5:
                             _write(out, rows); fetched += 1  # settled no-data day — cache [] so we never re-probe
+                            last_stored = d
                         else:
                             deferred += 1
                             more = True  # recent empty day (not yet posted) — retry next run
