@@ -45,7 +45,18 @@ FREE-TIER PACING / RESUMABILITY (Tiingo free tier ≈ 50 req/hr, 1000/day, 500 u
                               file already refreshed within N days — lets a capped/paced run chip away
                               across launches, newest gaps first (default 0 = always refetch, like EODHD).
 News (append-only) ignores skip_fresh_days — it always fetches just its delta. A 429 (hourly window
-exhausted) sleeps to the next window and retries — it never fails the job outright.
+exhausted) sleeps to the next window and retries, against a PER-TOKEN sleep budget
+(TIINGO_MAX_RATE_SLEEPS, default 4/run): a healthy token that brushes the hourly cap loses at most
+~1h; a token the vendor keeps 429ing is declared exhausted and its remaining jobs DEFER instantly
+so the run still finishes and writes its manifest. (Before the budget, one broken token cost
+6x900s per job and three consecutive nightly pods died at the 8h watchdog with no manifest.)
+
+COVERAGE SIDECAR (`_coverage.json`): the widen-detection in _fresh() compares a file's first row
+date against `from` — but a company that IPO'd after `from` can never have rows reaching it, so
+those names looked permanently stale and were re-pulled full EVERY night (ABBV, ABNB, ISRG, …).
+The sidecar records, per output file, the `from` a successful full fetch actually requested; a
+file whose recorded window already contains the configured window is covered, no matter where its
+rows start. Widening `from` still triggers exactly one refetch per name (which re-records).
 
 TWO-ACCOUNT SPLIT (optional): set TIINGO_API_TOKEN2 and the universe is split half/half — the FIRST
 half of "stocks" (list order) always uses token 1, the SECOND half always token 2, and the halves
@@ -98,6 +109,10 @@ MAX_PAGES = 100    # hard backstop so offset pagination can never loop forever
 # get one more attempt at end of run, after this pause (seconds; env-overridable).
 RETRY_SWEEP_DELAY = int(os.environ.get("RETRY_SWEEP_DELAY", "60"))
 RATE_SLEEP = 900   # 429 = free-tier hourly window exhausted; sleep to the next window
+# Per-token, per-run cap on those 900s sleeps. 4 = at most ~1h lost to a healthy token brushing
+# the hourly cap; a token that is broken at the vendor (429 on every call, which sleeping cannot
+# fix) is declared exhausted after 4 and its remaining jobs defer instantly.
+MAX_RATE_SLEEPS = int(os.environ.get("TIINGO_MAX_RATE_SLEEPS", "4"))
 STORE_LOGS = os.environ.get("STORE_LOGS", "").strip().lower() in ("1", "true", "yes", "on")
 
 _ctx = None  # default = verified TLS; falls back to unverified if the CA bundle is missing
@@ -105,10 +120,16 @@ _LOG_LINES = []
 _req_count = 0    # api.tiingo.com requests this run, all tokens (the CDN symbol-list zip not counted)
 _req_by_tok = {}  # per-token request counts (manifest visibility)
 _last_req = {}    # per-token monotonic timestamp — each token paces its own rate window
+_rate_sleeps = {}   # per-token count of 429 sleeps consumed this run
+_dead_tokens = set()  # tokens whose sleep budget is spent — their jobs defer instead of sleeping
 
 
 class BudgetExceeded(Exception):
     """Raised by _throttle when max_requests_per_run is spent — the job defers, never fails."""
+
+
+class TokenExhausted(BudgetExceeded):
+    """A token spent its 429-sleep budget — jobs on it defer (resume next run), never fail."""
 
 
 def log(msg):
@@ -134,6 +155,8 @@ def _throttle(tok, min_interval, max_requests):
     accounts the halves interleave, so each token holds its own ≈50 req/hr window and the combined
     rate doubles."""
     global _req_count
+    if tok in _dead_tokens:
+        raise TokenExhausted(f"token {tok + 1} spent its 429-sleep budget this run")
     if max_requests and _req_count >= max_requests:
         raise BudgetExceeded(f"request budget spent ({_req_count}/{max_requests})")
     if min_interval > 0:
@@ -145,8 +168,9 @@ def _throttle(tok, min_interval, max_requests):
     _req_by_tok[tok] = _req_by_tok.get(tok, 0) + 1
 
 
-def _open(url, headers=None):
-    """GET url -> (status, raw_bytes). Retries transient errors; sleeps out 429 hourly windows."""
+def _open(url, headers=None, tok=None):
+    """GET url -> (status, raw_bytes). Retries transient errors; sleeps out 429 hourly windows
+    against the per-token budget (tok=None = unauthenticated CDN asset, brief backoff only)."""
     global _ctx
     req = urllib.request.Request(url, headers=headers or {})
     attempt = 0
@@ -155,9 +179,33 @@ def _open(url, headers=None):
             with urllib.request.urlopen(req, timeout=120, context=_ctx) as r:
                 return r.status, r.read()
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < 6:
-                attempt += 1
-                log(f"     429 rate-limited — sleeping {RATE_SLEEP}s for the hourly window (attempt {attempt})")
+            if e.code == 429 and tok is None:
+                if attempt < 3:
+                    attempt += 1
+                    time.sleep(2 * attempt)
+                    continue
+                return e.code, b""
+            if e.code == 429:
+                try:
+                    body = e.read().lower()
+                except Exception:
+                    body = b""
+                # "monthly bandwidth allocation" 429s only clear at the month boundary — sleeping
+                # is pure waste (measured live 2026-08-21: token 2 served exactly this body).
+                if b"monthly" in body:
+                    _dead_tokens.add(tok)
+                    raise TokenExhausted(
+                        f"token {tok + 1} is over its MONTHLY allocation (resets at month "
+                        f"start) — deferring its remaining jobs")
+                used = _rate_sleeps.get(tok, 0)
+                if used >= MAX_RATE_SLEEPS:
+                    _dead_tokens.add(tok)
+                    raise TokenExhausted(
+                        f"token {tok + 1} still 429 after {used} hourly-window sleeps — "
+                        f"deferring its remaining jobs")
+                _rate_sleeps[tok] = used + 1
+                log(f"     429 rate-limited — sleeping {RATE_SLEEP}s for the hourly window "
+                    f"(token {tok + 1}, sleep {used + 1}/{MAX_RATE_SLEEPS} this run)")
                 time.sleep(RATE_SLEEP)
                 continue
             if e.code in (500, 502, 503, 504) and attempt < 3:
@@ -188,7 +236,7 @@ def _api(path, params, throttle, tok=0):
     """Throttled GET {API}{path}?params with token #tok -> parsed JSON, raising on auth failure."""
     _throttle(tok, *throttle)
     url = f"{API}{path}?{urllib.parse.urlencode(params)}"
-    status, raw = _open(url, _auth_headers(tok))
+    status, raw = _open(url, _auth_headers(tok), tok=tok)
     if status in (401, 403):
         raise RuntimeError(f"{status} — Tiingo token rejected (or endpoint not on this plan)")
     if status == 404:
@@ -307,30 +355,61 @@ def _days_between(a, b):
         return 0
 
 
+_COVERAGE = None  # lazy {relpath: from_date a successful full fetch requested} — see docstring
+
+
+def _coverage():
+    global _COVERAGE
+    if _COVERAGE is None:
+        try:
+            with open(os.path.join(DATA_DIR, "_coverage.json")) as f:
+                d = json.load(f)
+            _COVERAGE = d if isinstance(d, dict) else {}
+        except (OSError, ValueError):
+            _COVERAGE = {}
+    return _COVERAGE
+
+
+def _record_coverage(path, want_from):
+    """Remember that `path` was produced by a fetch that requested startDate=want_from."""
+    if not want_from:
+        return
+    cov = _coverage()
+    key = os.path.relpath(path, DATA_DIR)
+    if cov.get(key) != want_from:
+        cov[key] = want_from
+        _write(os.path.join(DATA_DIR, "_coverage.json"), cov, indent=2)
+
+
 def _fresh(path, skip_fresh_days, want_from=None):
     """True if the file exists and was refreshed within skip_fresh_days (resume across paced runs).
 
     `want_from` closes a trap: freshness is measured by MTIME, so a file written moments ago with
     a NARROWER window still looks fresh and gets skipped. Widening `from` in the config would then
     do nothing for skip_fresh_days (5 by default) — the operator changes the window, the next run
-    reports "fresh — skipped" for every ticker, and the extra history never arrives. If the stored
-    rows start later than the window now asks for, the file is stale no matter how new it is."""
+    reports "fresh — skipped" for every ticker, and the extra history never arrives.
+
+    Whether the stored rows cover the window is decided by the `_coverage.json` sidecar (what a
+    successful full fetch actually ASKED for), not by where the rows start: a post-2000 IPO name
+    can never have rows reaching from=2000-01-01, and the old first-row heuristic declared every
+    such name permanently stale — a full re-pull of ~150 tickers per night into a 50 req/hr free
+    tier. The heuristic below survives only as the fallback for legacy files with no sidecar
+    entry (each gets at most one more full fetch, which records its coverage)."""
     if skip_fresh_days <= 0 or not os.path.exists(path):
         return False
     if (time.time() - os.path.getmtime(path)) / 86400.0 >= skip_fresh_days:
         return False
     if want_from:
+        got = _coverage().get(os.path.relpath(path, DATA_DIR))
+        if got and got <= want_from:
+            return True  # last full fetch already requested at least this window
         rows = _read_existing(path)
         dates = [str(r.get("date"))[:10] for r in rows if isinstance(r, dict) and r.get("date")]
-        # TOLERANCE, not a bare `>`. `want_from` is a CALENDAR date; the data can only start on the
-        # first SESSION on or after it. With from=2000-01-01 (a Saturday) every complete file starts
-        # 2000-01-03, so a strict comparison called every ticker stale on every run — 503 full
-        # re-pulls of ~6,700 rows a night into a free tier that allows ~50 req/hr. That is what
-        # walked this job into 20 rate-limit sleeps and an 8-hour watchdog kill with 316/503 done.
-        # A real widening moves the window by months or years, so a fortnight of slack cannot mask
-        # one while it does absorb any New Year / holiday weekend.
+        # TOLERANCE, not a bare `>`: `want_from` is a CALENDAR date, the data starts on the first
+        # SESSION on or after it, so a fortnight of slack absorbs any New Year/holiday weekend.
         if dates and _days_between(want_from, min(dates)) > STALE_GAP_TOLERANCE_DAYS:
             return False
+        _record_coverage(path, want_from)  # heuristic passed — record so we never re-read for it
     return True
 
 
@@ -371,7 +450,17 @@ def main():
                     log(f"OK   {dataset:<10} {symbol}: {n} [fresh < {skip_fresh_days}d — skipped] -> {out}")
                     return entry
                 data, added, mode = job()
+                # A delisted/renamed name (or a vendor blip) can return an EMPTY payload with
+                # HTTP 200 — never let that clobber real history (EQR: a full refetch overwrote
+                # 6,695 rows with [] on 2026-08-21). Keep the existing file and say so.
+                if isinstance(data, list) and not data and refetch_whole and _read_existing(out):
+                    n = len(_read_existing(out))
+                    entry.update(ok=True, count=n)
+                    log(f"OK   {dataset:<10} {symbol}: vendor returned 0 rows — keeping the "
+                        f"existing {n}-row file (delisted or vendor blip) -> {out}")
+                    return entry
                 _write(out, data)
+                _record_coverage(out, want_from)
                 c = len(data) if isinstance(data, (list, dict)) else 0
                 entry.update(ok=True, count=c, added=added)
                 log(f"OK   {dataset:<10} {symbol}: {c} (+{added}) [{mode}] -> {out}")
@@ -473,6 +562,8 @@ def main():
         "tokens": len(TOKENS),
         "requests_used": _req_count,
         "requests_by_token": {f"token{k + 1}": v for k, v in sorted(_req_by_tok.items())},
+        "rate_limit_sleeps": {f"token{k + 1}": v for k, v in sorted(_rate_sleeps.items())},
+        "rate_limited_tokens": sorted(f"token{k + 1}" for k in _dead_tokens),
         "n_stocks": len(stocks),
         "deferred": deferred,
         "ok": all_ok,
@@ -480,6 +571,10 @@ def main():
     }
     _write(os.path.join(DATA_DIR, "_run.json"), manifest, indent=2)
 
+    if _dead_tokens:
+        log(f"WARN token(s) {sorted(k + 1 for k in _dead_tokens)} spent their 429-sleep budget "
+            f"({MAX_RATE_SLEEPS}) and had their remaining jobs deferred. If this repeats nightly, "
+            f"the account is throttled at the vendor — check its usage/status on tiingo.com.")
     if deferred:
         log(f"NOTE: {deferred} job(s) deferred by the request budget — re-launch to continue")
     if not all_ok:

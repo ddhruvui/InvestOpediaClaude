@@ -207,6 +207,12 @@ namespace on the same volume.
 | **D-13** full inventory incl. delisted | `supported_tickers.zip` (static CDN) | `symbol_list` → `data_tiingo/symbols/supported_tickers.json` |
 | **G-04** pre-2020 news (paid add-on) | `/tiingo/news?tickers=` | `news` → `data_tiingo/news/<T>.json` (append-only) |
 
+> **G-04 stays open on the standard paid plan (measured 2026-08-21):** the data subscription's
+> `/tiingo/news` serves a **rolling ~3-month window** — any `startDate/endDate` before that returns
+> the same latest articles, silently unfiltered. The historical archive needs Tiingo's separate
+> News license. Since EODHD already covers Dec-2020→now completely, Tiingo news adds nothing here;
+> `news` stays out of `datasets` and G-04 keeps its sanctioned NaN handling.
+
 **API mechanics** (`fetch_tiingo.py`): `Authorization: Token …` header; each `prices` row carries
 unadjusted OHLCV **and** `adjOpen/adjHigh/adjLow/adjClose/adjVolume` + `divCash` + `splitFactor`
 (cross-check factor = `adjClose/close`). Ticker format uses dashes (`BRK-B`) — same as EODHD, so the
@@ -214,7 +220,22 @@ universe is shared verbatim. **Free tier ≈ 50 req/hr, 1,000 req/day, 500 uniqu
 account** — the fetcher paces via `min_request_interval_sec` (72 s ≈ 50/hr, enforced PER token),
 soft-caps a run via `max_requests_per_run` (jobs past the cap log `DEFER`, non-fatal), and resumes
 across launches via `skip_fresh_days` (skip files refreshed <N days ago). A 429 sleeps out the
-hourly window and retries. `market` (SPY) is fetched FIRST so the budget never starves it.
+hourly window and retries against a **per-token sleep budget** (`TIINGO_MAX_RATE_SLEEPS`, default
+4/run): once spent — or instantly, when the 429 body says **"monthly bandwidth allocation"**,
+which no amount of sleeping clears (it resets at the month boundary; token 2 hit it 2026-08-21) —
+the token is declared exhausted and its remaining jobs DEFER so the run still finishes and writes
+its manifest instead of dying at the 8h watchdog. The **`_coverage.json` sidecar** records the
+`startDate` each successful full fetch requested, so a post-2000 IPO name (ABBV, ABNB, ISRG, …)
+whose rows can never reach `from=2000-01-01` is not re-pulled full every night — that trap is what
+burned account 2's monthly bandwidth. Widening `from` still refetches each name exactly once.
+`market` (SPY) is fetched FIRST so the budget never starves it.
+**Current operating mode (since 2026-08-21):** account 1 is on the **paid tier** and runs the whole
+universe single-token (`TIINGO_API_TOKEN2` is parked in `.env` — the free second account is over its
+monthly bandwidth until Sep 1, and with one paid token the split only adds free-tier caps back in).
+`datasets` now includes `metadata` (the D-13 coverage cross-check) and pacing is 2s. If you ever
+drop back to two free accounts: restore `TIINGO_API_TOKEN2`, set pacing back to 72, and drop
+`max_requests_per_run` accordingly.
+
 **Two-account split:** with `TIINGO_API_TOKEN2` set, the first half of `stocks` is pinned to
 token 1 and the second half to token 2 (positional and sticky within a month — the unique-symbol
 cap is per account, so a ticker must not switch accounts mid-month), interleaved for ~100 req/hr
@@ -231,7 +252,8 @@ data_tiingo/
 ├── market/SPY.json            D-09 cross-check
 ├── symbols/supported_tickers.json  D-13 whole-inventory snapshot (incl. delisted)
 ├── news/<T>.json              G-04 optional (paid) — off by default
-├── _run.json                  run manifest (requests_used, deferred count, per-job results)
+├── _coverage.json             per-file record of the startDate the last full fetch requested
+├── _run.json                  run manifest (requests_used, deferred count, rate_limited_tokens, per-job results)
 └── logs/                      gated by STORE_LOGS (errors/crashes always logged)
 ```
 
