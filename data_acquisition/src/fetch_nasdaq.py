@@ -25,10 +25,15 @@ API CONTRACT (verified live against api.sharadar.com):
   - Filters : ticker=, dimension= (SF1), and range operators <col>.gte= / <col>.lte= — same operator
               syntax as the datatables API. Incremental uses lastupdated.gte= (SEP/SF1/TICKERS) or
               date.gte= (ACTIONS/SP500 carry no lastupdated).
-  - Paging  : OFFSET-based. The server caps ANY result set at ROW_CAP (100,000) rows regardless of
-              the `limit` asked for, so every call is paged: offset=0, ROW_CAP, 2*ROW_CAP, … until a
+  - Paging  : OFFSET-based. The server caps ANY result set at ROW_CAP rows regardless of the
+              `limit` asked for, so every call is paged: offset=0, ROW_CAP, 2*ROW_CAP, … until a
               page comes back short. Verified live 2026-08-11 (offset=100000 returns a different row
-              set than offset=0). Never trust `count` alone — a bare count==100000 is a CAP HIT.
+              set than offset=0). Never trust `count` alone — a bare count==ROW_CAP is a CAP HIT.
+              WARNING: there is NO sort (every sort-parameter spelling is silently ignored), so
+              offset paging rides an unstable server-side order. Filtered pulls have shown no
+              artifacts, but the UNFILTERED whole-table /tickers walk drops and duplicates rows
+              between pages — that one is paged by disjoint permaticker ranges instead
+              (_fetch_ranged), where completeness never depends on cross-request ordering.
   - Ticker  : the `ticker` comma-list is capped at **30 tickers AND 200 characters** (server-enforced,
               HTTP 400 "Too many tickers" / "ticker exceeds maximum length of 200 characters").
               _ticker_batches() packs to BOTH limits.
@@ -48,8 +53,10 @@ PER-TICKER SERIES (config "tables", applied to each "stocks" entry):
 
 WHOLE-TABLE SNAPSHOTS (config "whole_tables", no ticker filter — survivorship-bias-free):
     TICKERS  D-13  permaticker (M1 entity key), ticker,name,exchange,isdelisted,category,cusips,
-             siccode,sector,industry,firstpricedate,lastpricedate,table,lastupdated. ~25k rows incl.
-             delisted, returned in one high-limit call. Join symbol-change events via permaticker.
+             siccode,sector,industry,firstpricedate,lastpricedate,table,lastupdated. ~68k rows incl.
+             delisted, pulled as disjoint permaticker ranges (_fetch_ranged — offset paging over
+             the unfiltered table drops/dupes rows), deduped + verified against the universe
+             before overwrite. Join symbol-change events via permaticker.
     SP500    D-15  date,action,ticker,name,contraticker,contraname,note — S&P 500 add/remove history.
 
 INCREMENTAL (default on; "incremental": false forces a full refetch). The network volume persists
@@ -446,6 +453,68 @@ def _fetch(endpoint, params, label=None):
     return rows, True
 
 
+def _fetch_ranged(endpoint, params, col, label=None, hint_lo=100_000, hint_hi=9_999_999):
+    """Fetch every row by partitioning the table over `col` (an integer key) with .gte/.lte
+    range filters, bisecting any range that comes back at ROW_CAP rows (a cap hit).
+
+    Offset paging (_fetch) is only correct if the server returns a stable order across requests.
+    api.sharadar.com does not sort and ignores every sort-parameter spelling (probed live
+    2026-08-21: sort / qopts.sort / order / sort_by all return the same unordered rows), and on
+    the one UNFILTERED paged call in this fetcher — the whole-table /tickers pull — the order
+    SHIFTS between the paced requests of a multi-minute walk. The 2026-08-21 snapshot showed the
+    damage: 29 S&P 500 entities absent outright (GOOG, XOM, UNH, ...), 101 more missing their
+    table="stocks" row, and 5,725 rows duplicated verbatim. Filtered queries have shown no such
+    artifacts (the 59,674-row date-filtered SP500 snapshot has zero duplicates), which is why
+    only this whole-table path needs the ranged strategy.
+
+    Disjoint key ranges cannot shift: a range answered with fewer than ROW_CAP rows is complete
+    regardless of order, and one answered with exactly ROW_CAP is split in half and re-asked.
+    Ranged calls also bill at weighted cost 1 vs 100 for the unfiltered call (x-ratelimit-cost,
+    measured 2026-08-21), so the ~20 calls this takes cost less than the old 8-page offset walk.
+
+    The outermost ranges are EDGE-OPEN (no .gte on the leftmost, no .lte on the rightmost), so
+    hint_lo/hint_hi only steer midpoints — keys outside the hinted span cost extra splits, never
+    rows. (permaticker measured in [100000, 9999999] on 2026-08-21; comparisons are numeric:
+    permaticker.lte=99999 matches nothing, so no lexicographic mixing.)"""
+    rows, calls, truncated = [], 0, False
+    stack = [(None, None)]  # (gte, lte); None = unbounded edge
+    while stack:
+        gte, lte = stack.pop()
+        if calls >= MAX_PAGES:
+            log(f"WARN {endpoint} {label or ''}: hit MAX_PAGES ({MAX_PAGES}) — rows may be truncated")
+            truncated = True
+            break
+        q = dict(params)
+        if gte is not None:
+            q[f"{col}.gte"] = gte
+        if lte is not None:
+            q[f"{col}.lte"] = lte
+        got = _rows(_get(endpoint, q))
+        calls += 1
+        if len(got) < ROW_CAP:
+            rows += got
+            continue
+        if gte is not None and lte is not None and gte >= lte:
+            # a single key holding >= ROW_CAP rows cannot be range-split; offset-page just that
+            # key rather than dropping it (never expected for an entity master)
+            log(f"WARN {endpoint} {label or ''}: {col}={gte} alone hits ROW_CAP — offset-paging that key")
+            sub, trunc = _fetch(endpoint, q, label=f"{col}={gte}")
+            rows += sub
+            truncated = truncated or trunc
+            continue
+        lo = gte if gte is not None else hint_lo
+        hi = lte if lte is not None else hint_hi
+        if hi <= lo:  # an open edge past the hinted span keeps cap-hitting: widen and keep splitting
+            hi = max(hint_hi, lo * 2 + 1) if lte is None else hi
+            lo = min(hint_lo, hi // 2) if gte is None else lo
+        mid = (lo + hi) // 2
+        stack.append((gte, mid))
+        stack.append((mid + 1, lte))
+    if STORE_LOGS:
+        log(f"     {endpoint} {label or ''}: {len(rows)} rows ({calls} ranged calls)")
+    return rows, truncated
+
+
 # --- append-only merge (M1-01): dedup by the WHOLE row so a restated/adjusted row is kept as new ---
 
 def _row_key(r):
@@ -551,6 +620,48 @@ def _sharadar_ticker(t, cfg, table=None):
     if isinstance(rep, list) and len(rep) == 2:
         return t.replace(rep[0], rep[1])
     return t
+
+
+def _verify_tickers(rows, syms):
+    """(problems, notes) for a TICKERS snapshot — both lists of strings; problems=[] means the
+    snapshot may be trusted. Run against a fresh pull before it may overwrite the file, AND
+    against the on-disk file before trusting a fresh-skip.
+
+    PROBLEMS (fail the job):
+      - verbatim duplicate rows — the signature of offset pages shifting mid-walk;
+      - a universe ticker present in the table but WITHOUT its table="stocks" row (D-13's
+        permaticker join resolves symbols through stocks rows, so this hole breaks the entity
+        join downstream, not just this file);
+      - MANY universe tickers absent from the table entirely. All of an entity's rows share one
+        permaticker, so corruption that loses a key range takes out whole entities at once — the
+        2026-08-21 offset-paged snapshot dropped 29 S&P names this way.
+    NOTES (logged, not fatal): a FEW tickers absent entirely. That is what a genuine symbol
+    rename looks like — Sharadar renames the entity in place on its permaticker and the old
+    symbol vanishes from every row (EQR -> VRMK, live 2026-08-18) — and the config keeps retired
+    symbols on purpose for late restatements, so renames must not fail the nightly forever."""
+    seen, dups, stocks_rows, any_rows = set(), 0, set(), set()
+    for r in rows:
+        k = _row_key(r)
+        dups += k in seen
+        seen.add(k)
+        any_rows.add(r.get("ticker"))
+        if r.get("table") == "stocks":
+            stocks_rows.add(r.get("ticker"))
+    problems, notes = [], []
+    if dups:
+        problems.append(f"{dups} verbatim duplicate rows")
+    partial = sorted(s for s in syms if s in any_rows and s not in stocks_rows)
+    if partial:
+        problems.append(f'{len(partial)} universe tickers missing their table="stocks" row: '
+                        + ",".join(partial[:8]) + (",..." if len(partial) > 8 else ""))
+    absent = sorted(s for s in syms if s not in any_rows)
+    if len(absent) > 5:
+        problems.append(f"{len(absent)} universe tickers absent from TICKERS entirely: "
+                        + ",".join(absent[:8]) + ",...")
+    elif absent:
+        notes.append(f"universe ticker(s) absent from TICKERS entirely (renamed or departed?): "
+                     + ",".join(absent))
+    return problems, notes
 
 
 def main():
@@ -672,12 +783,21 @@ def main():
                                     "added": 0, "error": f"{type(e).__name__}: {e}"})
 
     def record_whole(table, out):
-        """Whole-table snapshot (TICKERS / SP500): one high-limit call, replaced whole.
+        """Whole-table snapshot (TICKERS / SP500), replaced whole.
+
+        SP500 is one date-filtered paged pull. TICKERS must NOT be: the unfiltered /tickers walk
+        pages over an unstable server-side order, and a 2026-08-21 snapshot pulled that way was
+        missing 29 S&P 500 entities and held 5,725 duplicate rows (see _fetch_ranged). TICKERS is
+        therefore pulled as disjoint permaticker ranges, deduped, sorted, and VERIFIED against
+        the universe (_verify_tickers) before it may overwrite the file.
 
         On a warm volume, skip the re-pull when the on-disk file is younger than WHOLE_REFRESH_DAYS
-        (the entity master / constituents change slowly). incremental:false forces a refetch.
+        (the entity master / constituents change slowly) — but only if the on-disk file itself
+        verifies clean, so a corrupt snapshot is healed on the next run instead of trusted for
+        another refresh cycle. incremental:false forces a refetch.
         """
         endpoint = ENDPOINT[table]
+        uni_syms = [_sharadar_ticker(t, cfg, table) for t in stocks] if table == "TICKERS" else []
 
         def attempt():
             entry = {"symbol": table, "dataset": table, "ok": False, "count": 0, "added": 0, "error": None}
@@ -685,11 +805,28 @@ def main():
                 if incremental and whole_refresh_days > 0 and os.path.exists(out):
                     age_days = (time.time() - os.path.getmtime(out)) / 86400.0
                     if age_days < whole_refresh_days:
-                        n = len(_read_existing(out))
-                        entry.update(ok=True, count=n, added=0)
-                        log(f"OK   {table:<14} ALL: {n} [fresh {age_days:.1f}d < {whole_refresh_days}d — skipped] -> {out}")
-                        return entry
-                rows, _ = _fetch(endpoint, dict(WHOLE_TABLES.get(table) or {}), label="ALL")
+                        held = _read_existing(out)
+                        problems = _verify_tickers(held, uni_syms)[0] if table == "TICKERS" else []
+                        if not problems:
+                            entry.update(ok=True, count=len(held), added=0)
+                            log(f"OK   {table:<14} ALL: {len(held)} [fresh {age_days:.1f}d < {whole_refresh_days}d — skipped] -> {out}")
+                            return entry
+                        log(f"     {table}: fresh on-disk snapshot FAILS verification ({'; '.join(problems)}) — re-pulling")
+                if table == "TICKERS":
+                    rows, _ = _fetch_ranged(endpoint, dict(WHOLE_TABLES.get(table) or {}),
+                                            "permaticker", label="ALL")
+                    # ranges are disjoint so dups shouldn't occur; dedup anyway and sort so the
+                    # snapshot is deterministic run-to-run (zero-padded permaticker sorts numerically)
+                    rows = sorted({_row_key(r): r for r in rows}.values(),
+                                  key=lambda r: (str(r.get("permaticker") or "").zfill(12),
+                                                 str(r.get("table")), str(r.get("ticker"))))
+                    problems, notes = _verify_tickers(rows, uni_syms)
+                    for note in notes:
+                        log(f"     {table}: NOTE {note}")
+                    if problems:
+                        raise RuntimeError(f"pulled TICKERS fails verification: {'; '.join(problems)}")
+                else:
+                    rows, _ = _fetch(endpoint, dict(WHOLE_TABLES.get(table) or {}), label="ALL")
                 # SHRINK GUARD. Unlike every other table here, TICKERS and SP500 are written as a
                 # SNAPSHOT — a plain overwrite, because their rows are current-state metadata that
                 # a merge would accumulate stale copies of. That makes this the one path where a
@@ -697,8 +834,10 @@ def main():
                 # full-history bundle serves it, and a subscription downgrade or a partial vendor
                 # response would replace 59,672 rows with a few hundred and look like a clean run.
                 # A collapse to under 90% of what we hold is treated as a failed fetch: keep the
-                # file, raise, let the retry queue and the manifest surface it.
-                prior = len(_read_existing(out)) if os.path.exists(out) else 0
+                # file, raise, let the retry queue and the manifest surface it. Compare DEDUPED
+                # counts — a prior file inflated by duplicated pages must not veto its own repair.
+                prior_rows = _read_existing(out) if os.path.exists(out) else []
+                prior = len({_row_key(r) for r in prior_rows})
                 if prior and len(rows) < prior * 0.9:
                     raise RuntimeError(
                         f"refusing to overwrite {out}: vendor returned {len(rows):,} rows vs "
