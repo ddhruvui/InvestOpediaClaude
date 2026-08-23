@@ -36,6 +36,9 @@ else
     export OUT_DIR="${OUT_DIR:-/workspace/derived/${JOB:-stage1}}"
     # G-09: one ledger for ALL runs — a per-pod ledger would undercount DSR's N
     export LEDGER_PATH="${LEDGER_PATH:-/workspace/ledger/trials.parquet}"
+    # continual learning: champions persist here between daily predict runs
+    export MODEL_DIR="${MODEL_DIR:-/workspace/models}"
+    export REFIT="${REFIT:-auto}"
     mkdir -p "$OUT_DIR"
 
     case "${JOB:-stage1}" in

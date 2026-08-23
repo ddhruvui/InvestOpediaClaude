@@ -164,5 +164,15 @@ hpo:
   engine: optuna
   objective: rank_ic                   # purged-CV Rank IC or net Sharpe
   max_trials_per_model: 100
+continual:                             # [IMPL] daily warm-start learning (predict job)
+  enabled: true
+  model_dir: /workspace/models         # champion store on the network volume
+  panel_tail_years: 5                  # update-mode data window; must cover feature
+                                       #   warmup (273) + train + purge + valid + labels
+  update_train_sessions: 252           # warm-fit window: newest labeled year before valid
+  update_boost_rounds: 200             # max extra trees per daily update
+  update_learning_rate: 0.02           # gentler than the full-fit 0.1
+  full_refit_sessions: 21              # full retrain cadence = val.retrain_cadence monthly
+  keep_model_files: 6                  # per-head history retained in the store
 seed:
   global: 20260717                     # [IMPL value]; propagated everywhere

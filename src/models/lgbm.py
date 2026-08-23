@@ -34,6 +34,20 @@ def lgbm_params(cfg, seed: int) -> dict:
     }
 
 
+def daily_rank_ic(pred: pd.Series, y: pd.Series) -> float:
+    """Mean daily Spearman between two (date, ticker)-indexed series. Used for the
+    champion-vs-challenger comparison, where both models must be scored on the SAME
+    validation window rather than each on the window it was trained against."""
+    df = pd.DataFrame({"p": pred, "y": y}).dropna()
+    if df.empty:
+        return float("nan")
+    d = df.index.get_level_values("date")
+    ics = df.groupby(d).apply(
+        lambda g: stats.spearmanr(g["p"], g["y"])[0] if len(g) > 2 else np.nan,
+        include_groups=False).to_numpy(dtype=float)
+    return float(np.nanmean(ics)) if np.isfinite(ics).any() else float("nan")
+
+
 def _rank_ic_feval(valid_dates: np.ndarray):
     """Custom eval: mean daily Spearman between preds and label (logged, not the
     early-stop metric — M6-03 stops on validation loss)."""
@@ -57,15 +71,28 @@ class LGBMHead:
         self.evals: dict = {}
 
     def fit(self, X_tr: pd.DataFrame, y_tr: pd.Series,
-            X_va: pd.DataFrame, y_va: pd.Series) -> "LGBMHead":
+            X_va: pd.DataFrame, y_va: pd.Series,
+            init_booster: "lgb.Booster | None" = None,
+            num_boost_round: int | None = None,
+            learning_rate: float | None = None) -> "LGBMHead":
+        """init_booster continues training on top of an existing model (continual
+        learning): new trees fit the residuals of the old ones. With init_model the
+        recorded evals cover only the NEW rounds while booster.best_iteration counts
+        from the init model's trees — never index evals by best_iteration; use
+        valid_rank_ic() for the honest number in either mode."""
         self.feature_names = list(X_tr.columns)
+        params = dict(self.params)
+        if learning_rate is not None:
+            params["learning_rate"] = float(learning_rate)
         dtr = lgb.Dataset(X_tr.values, label=y_tr.values,
                           feature_name=self.feature_names, free_raw_data=True)
         dva = dtr.create_valid(X_va.values, label=y_va.values)
         valid_dates = X_va.index.get_level_values("date").values
         rec: dict = {}
         self.booster = lgb.train(
-            self.params, dtr, num_boost_round=int(self.cfg.lgbm.num_boost_round),
+            params, dtr,
+            num_boost_round=int(num_boost_round or self.cfg.lgbm.num_boost_round),
+            init_model=init_booster,
             valid_sets=[dva], valid_names=["valid"],
             feval=_rank_ic_feval(valid_dates),
             callbacks=[lgb.early_stopping(int(self.cfg.lgbm.early_stopping_rounds),
@@ -73,6 +100,20 @@ class LGBMHead:
                        lgb.record_evaluation(rec)])
         self.evals = rec
         return self
+
+    @classmethod
+    def from_booster(cls, cfg, horizon: int, seed: int, booster: lgb.Booster,
+                     feature_names: list[str]) -> "LGBMHead":
+        """Wrap a stored booster for scoring / continued training (no fit here)."""
+        head = cls(cfg, horizon, seed)
+        head.booster = booster
+        head.feature_names = list(feature_names)
+        return head
+
+    def valid_rank_ic(self, X_va: pd.DataFrame, y_va: pd.Series) -> float:
+        """Mean daily Spearman on a validation window — safe in both fresh-fit and
+        continued-training modes (see fit docstring)."""
+        return daily_rank_ic(self.predict(X_va), y_va)
 
     def predict(self, X: pd.DataFrame) -> pd.Series:
         assert self.booster is not None

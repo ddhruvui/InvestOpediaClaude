@@ -43,7 +43,11 @@ scripts/launch_predict.sh market    # eod_bulk -> m1x: whole-market panel + top-
 scripts/launch_predict.sh stage1    # features -> LGBM heads (purged WF) -> ensemble
                                     # -> portfolio -> backtest -> G-11 gates
 scripts/launch_predict.sh stage2    # + GRU + JKX CNN + FinBERT (GPU pod)
-scripts/launch_predict.sh predict   # latest-date scores -> target book -> suggestions
+scripts/launch_predict.sh predict   # latest-date scores -> target book -> suggestions.
+                                    # Continual: warm-updates volume-stored champions
+                                    # daily (champion-vs-challenger on the same purged
+                                    # valid year); full refit auto every 21 sessions or
+                                    # on config/feature change; REFIT=full forces it.
 ```
 
 `USE_MARKET=0` restricts to the 506-name M1 layer (pipeline validation only —

@@ -236,10 +236,38 @@ scripts/launch_predict.sh stage2    # + GRU + JKX CNN + FinBERT (GPU pod)
 scripts/launch_predict.sh stage3    # meta gate + barrier-exit event book + CPCV(6,2)
                                     #   (reads SCORES_DIR, default /workspace/derived/stage2)
 scripts/launch_predict.sh predict   # latest-close scores -> target book -> suggestions
+                                    #   (continual: warm-updates stored champions daily,
+                                    #   full refit auto every 21 sessions — see below)
 
 scripts/watch_jobs.sh stage3 predict   # 10-min watchdog: status, failure tails,
                                        # ONE auto-relaunch per job
 ```
+
+## Incremental daily learning (the Monday-morning answer)
+
+Nothing retrains from scratch daily. The `predict` job is **continual**: LGBM champions
+persist on the volume under `/workspace/models/` (`MODEL_DIR`), and each daily run
+
+1. **decides the mode** — `update` if every head has a champion trained under the current
+   `config_hash` and the last FULL fit is < `continual.full_refit_sessions` (21 ≈ monthly,
+   = `val.retrain_cadence`) worth of *newly labeled* sessions old; else `full`;
+2. in `update` mode loads only a `panel_tail_years` (5y) slice of the panel — year-parts
+   before the tail are never even read — and **warm-continues** each champion with
+   LightGBM `init_model` on the newest labeled year (purged against the valid year,
+   `update_learning_rate` 0.02, ≤ `update_boost_rounds` extra trees);
+3. **champion vs challenger**: both are scored on the SAME purged valid year (mean daily
+   Rank IC); the challenger is adopted only if it wins. Learning accrues when the new
+   data teaches something; a noise-day challenger is rejected and the champion stands;
+4. logs every fit — adopted or rejected — to the G-09 trials ledger (DSR's N stays honest),
+   and stamps the decision into `suggestions.json` under `"training"`.
+
+`REFIT=full scripts/launch_predict.sh predict` forces a from-scratch fit (also automatic
+after any `configs/system.yaml` change, feature-set change, or on the 21-session cadence).
+So the daily loop is: `launch.sh all` + `post` (delta fetch + M1 rebuild) →
+`launch_predict.sh market` (resumable, adds new days) → `launch_predict.sh predict`
+(warm) → mirror + `tools/build_reports.py`. Stage 1/2/3 are the research/backtest
+reports — they only need re-running when code or config changes, or on the monthly
+cadence to refresh the G-11 gate verdict.
 
 - Pods self-terminate with a confirmed DELETE; a restart marker prevents billing loops.
   `KEEP_POD=1` keeps a pod alive for inspection; `RUNPOD_VCPU=8` (16 GB) is required for

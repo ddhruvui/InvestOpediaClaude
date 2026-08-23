@@ -62,6 +62,8 @@ def build(out_dir: str, n_names: int = 40, years: float = 7.0, seed: int = 42,
     pd.DataFrame(columns=["ticker", "period", "period_frequency", "as_of_date",
                           "eps_trend_current", "eps_trend_90d"]) \
         .to_parquet(out / "estimates_pit.parquet", index=False)
+    pd.DataFrame({"ticker": tick, "name": tick, "category": "Domestic Common Stock",
+                  "isdelisted": "N"}).to_parquet(out / "entities.parquet", index=False)
     # SPY = equal-weight market proxy
     spy_close = 100 * np.exp(np.cumsum(rets.mean(axis=1)))
     spy = [{"date": d.strftime("%Y-%m-%d"), "open": float(o), "close": float(c),

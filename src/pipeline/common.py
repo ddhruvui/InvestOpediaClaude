@@ -18,14 +18,27 @@ from src.primitives.index import index_block
 
 def prepare(cfg, m1_dir: str, eod_dir: str, market_dir: str | None = None,
             max_tickers: int | None = None, with_sentiment: bool = False,
-            finbert_dir: str | None = None, sent_cache: str | None = None) -> dict:
+            finbert_dir: str | None = None, sent_cache: str | None = None,
+            since: pd.Timestamp | None = None) -> dict:
+    """since: restrict the panel to sessions >= since (continual-learning tail).
+    Features with the longest lookback (mom_12_1, 273 sessions) are exact from
+    ~14 months past `since`; callers must size `since` so every date they train,
+    validate or score on has that warm-up behind it."""
     m1 = M1(m1_dir)
     sessions = m1.sessions()
+    if since is not None:
+        since = pd.Timestamp(since)
+        sessions = sessions[sessions >= since]
     if market_dir:
         from src.data.market import load_workset_prices, membership_mask
-        prices = load_workset_prices(market_dir, m1.raw_prices())
+        m1p = m1.raw_prices()
+        if since is not None and len(m1p):
+            m1p = m1p[m1p["date"] >= since]
+        prices = load_workset_prices(market_dir, m1p, since=since)
     else:
         prices = m1.raw_prices()
+        if since is not None and len(prices):
+            prices = prices[prices["date"] >= since]
     if max_tickers:
         keep = sorted(prices["ticker"].unique())[:max_tickers]
         prices = prices[prices["ticker"].isin(keep)]

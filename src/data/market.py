@@ -11,12 +11,20 @@ import pandas as pd
 
 
 def load_workset_prices(market_dir: str | Path,
-                        m1_prices: pd.DataFrame | None = None) -> pd.DataFrame:
+                        m1_prices: pd.DataFrame | None = None,
+                        since: pd.Timestamp | None = None) -> pd.DataFrame:
+    """since: skip year-parts entirely before it (continual-learning tail window) —
+    the parts are named part-YYYY so the filter avoids even reading old files."""
     parts = sorted(glob.glob(str(Path(market_dir) / "workset_prices" / "part-*.parquet")))
     if not parts:
         raise FileNotFoundError(f"no workset_prices under {market_dir}")
+    if since is not None:
+        y0 = pd.Timestamp(since).year
+        parts = [p for p in parts if int(Path(p).stem.split("-")[1]) >= y0] or parts[-1:]
     df = pd.concat([pd.read_parquet(p) for p in parts], ignore_index=True)
     df["date"] = pd.to_datetime(df["date"])
+    if since is not None:
+        df = df[df["date"] >= pd.Timestamp(since)]
     out = df.rename(columns={"adjusted_close": "adjusted_close_vendor"})
     out["quarantined"] = False
     out["close_source"] = "eodhd_bulk"
