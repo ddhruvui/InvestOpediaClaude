@@ -355,6 +355,21 @@ def main() -> int:
     except Exception as e:
         print(f"-- config: {type(e).__name__}: {e}")
 
+    # D-11 session grid — the app needs it to answer "which session do these
+    # orders belong to?" without re-deriving holidays.
+    ses = _read_parquet(src / "sessions.parquet")
+    if ses is not None and len(ses):
+        dts = pd.to_datetime(ses["date"]).sort_values()
+        today = pd.Timestamp(datetime.now(timezone.utc).date())
+        window = dts[(dts >= today - pd.Timedelta(days=30))
+                     & (dts <= today + pd.Timedelta(days=90))]
+        (out / "calendar.json").write_text(json.dumps(_clean({
+            "sessions": [d.strftime("%Y-%m-%d") for d in window],
+            "note": "NYSE sessions (D-11 / Q-001) around today; holidays excluded.",
+        }), indent=1))
+        manifest["sections"]["calendar"] = {"sessions": len(window)}
+        print(f"OK calendar.json     {len(window)} sessions around today")
+
     tsum, tsample = build_trades(src)
     if tsum:
         (out / "trades_summary.json").write_text(json.dumps(tsum, indent=1))

@@ -275,7 +275,9 @@ cd app/frontend && npm run dev                  # hot-reload UI on :5173, proxie
 cd app/backend && npm test                      # paper-book regression suite
 ```
 
-Four pages: **Dashboard** (G-11 verdict, gate table, equity curve, member Rank ICs,
+Five pages: **Today** (the trade ticket — next-session orders, diffed against
+what you hold, so new buys are distinguished from existing positions; it is the
+landing page), **Dashboard** (G-11 verdict, gate table, equity curve, member Rank ICs,
 CPCV spread, baselines), **Suggestions** (target book + barrier levels, push to
 paper), **Backtest** (what was suggested vs what happened across 376k barrier
 trades), **Paper trading** (BP15: record fills to measure open-print slippage,

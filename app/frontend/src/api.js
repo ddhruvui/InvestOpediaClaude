@@ -12,6 +12,7 @@ async function req(path, opts) {
 
 export const api = {
   health: () => req('/api/health'),
+  today: () => req('/api/today'),
   summary: () => req('/api/summary'),
   equity: () => req('/api/equity'),
   suggestions: () => req('/api/suggestions'),

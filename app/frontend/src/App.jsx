@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
+import Today from './pages/Today.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Suggestions from './pages/Suggestions.jsx';
 import Backtest from './pages/Backtest.jsx';
 import Paper from './pages/Paper.jsx';
 
 const PAGES = [
+  ['today', 'Today', Today],
   ['dashboard', 'Dashboard', Dashboard],
   ['suggestions', 'Suggestions', Suggestions],
   ['backtest', 'Backtest', Backtest],
@@ -13,13 +15,13 @@ const PAGES = [
 ];
 
 export default function App() {
-  const [page, setPage] = useState(() => window.location.hash.slice(1) || 'dashboard');
+  const [page, setPage] = useState(() => window.location.hash.slice(1) || 'today');
   const [health, setHealth] = useState(null);
   const [theme, setTheme] = useState(
     () => localStorage.getItem('theme') || 'auto');
 
   useEffect(() => {
-    const onHash = () => setPage(window.location.hash.slice(1) || 'dashboard');
+    const onHash = () => setPage(window.location.hash.slice(1) || 'today');
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);

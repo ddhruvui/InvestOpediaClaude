@@ -9,6 +9,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as reports from './reports.js';
 import * as paper from './paper.js';
+import { ticket } from './today.js';
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -36,6 +37,7 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+app.get('/api/today', (_req, res) => res.json(ticket()));
 app.get('/api/summary', (_req, res) => send(res, reports.summary(), 'summary'));
 app.get('/api/equity', (_req, res) => send(res, reports.equity(), 'equity'));
 app.get('/api/suggestions', (_req, res) => send(res, reports.suggestions(), 'suggestions'));

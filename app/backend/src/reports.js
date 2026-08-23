@@ -36,6 +36,7 @@ export const suggestions = () => readJson('suggestions.json');
 export const tradesSummary = () => readJson('trades_summary.json');
 export const tradesSample = () => readJson('trades_sample.json');
 export const manifest = () => readJson('manifest.json');
+export const readCalendar = () => readJson('calendar.json');
 
 export function config() {
   return readJson('config.json') || {

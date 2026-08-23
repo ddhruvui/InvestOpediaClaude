@@ -88,3 +88,27 @@ t('PDT is not enforced at or above $25k', () => {
 
 console.log(`${pass} passed`);
 fs.rmSync(process.env.PAPER_DATA_DIR, { recursive: true, force: true });
+
+/* --- session logic: the ticket must point at the right open --- */
+const { sessionContext } = await import('./src/today.js');
+console.log('session context');
+const cases = [
+  // [UTC instant, expected next_open, label]
+  ['2026-08-23T16:00:00Z', '2026-08-24', 'Sunday afternoon -> Monday open'],
+  ['2026-08-21T21:30:00Z', '2026-08-24', 'Friday after the close -> Monday open'],
+  ['2026-08-21T12:00:00Z', '2026-08-21', 'Friday pre-open -> today\'s open'],
+  ['2026-08-25T21:30:00Z', '2026-08-26', 'Tuesday after the close -> Wednesday'],
+];
+for (const [iso, expected, label] of cases) {
+  t(label, () => {
+    const c = sessionContext(new Date(iso));
+    assert.equal(c.next_open, expected, `got ${c.next_open}`);
+  });
+}
+t('weekend is flagged as a non-trading day', () => {
+  const c = sessionContext(new Date('2026-08-23T16:00:00Z'));
+  assert.equal(c.is_weekend, true);
+  assert.equal(c.is_trading_day, false);
+  assert.equal(c.last_completed_close, '2026-08-21');
+});
+console.log(`${pass} passed total`);

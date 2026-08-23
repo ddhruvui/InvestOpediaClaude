@@ -45,6 +45,7 @@ python3 tools/build_reports.py --src derived --out reports/latest
 
 | Page | What it answers |
 |---|---|
+| **Today** (landing) | What do I do at the next open? Dates itself to the next NYSE session — Friday evening and all weekend both point at Monday — and diffs the target book against what you actually hold, so a name reads BUY only if it is not already held, SELL if held but dropped from the target, HOLD otherwise. Also lists time-barrier exits that come due, and warns if the signals predate the last close. |
 | **Dashboard** | Does this ship? G-11 verdict, the gate table, equity curve, member Rank ICs against the 0.02 admission floor, CPCV path spread, cost sensitivity, and the two free baselines it must beat. |
 | **Suggestions** | What would I trade at the next open? The target book with each entry's triple-barrier levels, flagged where the barrier is too wide to ever trigger. One click pushes a name into the paper book. |
 | **Backtest** | What was suggested, and what happened? 376k barrier trades: exit mix, win rate, return by conviction decile and holding length, and a filterable ledger. |

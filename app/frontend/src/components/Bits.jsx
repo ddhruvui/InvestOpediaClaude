@@ -25,11 +25,11 @@ export function StatTile({ label, value, sub, tone }) {
   );
 }
 
-export function Badge({ kind = 'neutral', children }) {
-  const glyph = kind === 'pass' ? '✓' : kind === 'fail' ? '✕' : '•';
+export function Badge({ kind = 'neutral', glyph, children }) {
+  const g = glyph ?? (kind === 'pass' ? '✓' : kind === 'fail' ? '✕' : '•');
   return (
     <span className={`badge ${kind}`}>
-      <span aria-hidden="true">{glyph}</span>{children}
+      <span aria-hidden="true">{g}</span>{children}
     </span>
   );
 }
