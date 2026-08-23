@@ -218,3 +218,41 @@ These were verified against the live APIs, not inferred. Each one broke, or woul
 (D-16 FinBERT, the §3/§4 landing layer, the D-12 job and whole-market D-02/D-03 are all built now —
 `fetch_finbert.py`, `build_m1.py`, `validate.py` and the `eod_bulk_actions` block respectively.)
 | **D-02/D-03 bulk** | EODHD `eod-bulk-last-day?type=splits\|dividends` | EODHD | per-ticker pulls cover only the 503 configured names, while `eod_bulk` covers ~45k — corporate actions are not survivorship-free |
+
+---
+
+# Daily use — prediction stack (blueprint v1.0.1 implementation)
+
+The modelling/backtest/prediction system lives at repo root (`src/`, `configs/system.yaml`,
+`tests/` — see [README.md](README.md)). **All processing runs on RunPod** against the same
+network volume as the fetchers; local execution is for unit tests and synthetic rehearsals only.
+
+```sh
+scripts/launch_predict.sh test      # T-01..T-15 suite on a CPU pod (validates pod env)
+scripts/launch_predict.sh market    # eod_bulk -> m1x whole-market panel + top-1000
+                                    #   survivorship-free universe (G-05); resumable
+scripts/launch_predict.sh stage1    # features -> LGBM heads (purged WF) -> book -> gates
+scripts/launch_predict.sh stage2    # + GRU + JKX CNN + FinBERT (GPU pod)
+scripts/launch_predict.sh stage3    # meta gate + barrier-exit event book + CPCV(6,2)
+                                    #   (reads SCORES_DIR, default /workspace/derived/stage2)
+scripts/launch_predict.sh predict   # latest-close scores -> target book -> suggestions
+
+scripts/watch_jobs.sh stage3 predict   # 10-min watchdog: status, failure tails,
+                                       # ONE auto-relaunch per job
+```
+
+- Pods self-terminate with a confirmed DELETE; a restart marker prevents billing loops.
+  `KEEP_POD=1` keeps a pod alive for inspection; `RUNPOD_VCPU=8` (16 GB) is required for
+  stage1/stage3/predict (the 4 GB default OOMs); stage2 needs the GPU flavor (automatic).
+- Outputs land on the volume under `derived/<job>/` (reports, scores, target weights,
+  suggestions). Fetch with:
+  `aws s3 cp $S3FLAGS s3://<volume>/derived/stage3/ ./derived_stage3/ --recursive`
+- `derived_*/` downloads are disposable and gitignored; keep only
+  `artifacts/reports/*.json|md` (small, reviewable) and `ledger/trials.parquet`
+  (G-09 append-only trials ledger feeding the Deflated Sharpe N).
+- Ordering: `market` must exist before stage1/predict (`USE_MARKET=1` default);
+  stage3 needs a prior stage1 or stage2 scores directory; predict is independent of
+  stage3 and can run daily after `launch.sh all` + `post`.
+- Tape hygiene for the whole-market panel (bar sanity, vintage seams, V-spikes,
+  level flips, tape breaks) is applied inside `build_panel()` — see
+  `src/data/panel.py` and the memory note `eod-bulk-tape-hygiene`.

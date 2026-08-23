@@ -1,0 +1,3226 @@
+{
+  "as_of_close": "2026-08-21",
+  "execute_at": "next session MOO (G-02: signals from close t earn from open t+1)",
+  "stamp": {
+    "config_hash": "b7a0c873d3f4df19bf5d7f5b6fc10a56c81f9f38cadbff16902353ff345cec7f",
+    "data_snapshot_id": "b4761a0b44bbb4c7",
+    "git_sha": "unknown",
+    "seed": 20260717
+  },
+  "heads": {
+    "lgbm_h5": {
+      "valid_rank_ic": 0.011651712690663955,
+      "best_iter": 1,
+      "top_features": [
+        "size",
+        "close_ema_5",
+        "mom_12_1",
+        "vol_20",
+        "atr_14",
+        "rsi_14",
+        "vma_ratio",
+        "ret_1",
+        "ret_5",
+        "close_sma_5"
+      ]
+    },
+    "lgbm_h20": {
+      "valid_rank_ic": 0.029411957256328666,
+      "best_iter": 1,
+      "top_features": [
+        "co_ratio",
+        "mom_12_1",
+        "days_to_earnings",
+        "close_sma_30",
+        "earnings_within_2d",
+        "size",
+        "close_ema_20",
+        "vol_20",
+        "days_since_earnings",
+        "rsi_14"
+      ]
+    },
+    "lgbm_h60": {
+      "valid_rank_ic": 0.00863871766114938,
+      "best_iter": 1,
+      "top_features": [
+        "vol_60",
+        "ret_5",
+        "vol_20",
+        "close_ema_5",
+        "ret_10",
+        "earnings_within_2d",
+        "mom_12_1",
+        "atr_14",
+        "close_sma_60",
+        "vol_5"
+      ]
+    }
+  },
+  "portfolio": {
+    "n_names": 315,
+    "gross_long": 0.9467394105923075,
+    "spy_hedge_weight": -0.7913
+  },
+  "buys_or_increases": [
+    {
+      "ticker": "GOOGN",
+      "target_weight": 0.01511,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4239,
+      "last_close": 48.7,
+      "stop_pct": -11.38,
+      "profit_take_pct": 11.38,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GOOGM",
+      "target_weight": 0.01493,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4239,
+      "last_close": 48.99,
+      "stop_pct": -11.55,
+      "profit_take_pct": 11.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WMT",
+      "target_weight": 0.01436,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1006,
+      "last_close": 103.7,
+      "stop_pct": -17.24,
+      "profit_take_pct": 17.24,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VTRS",
+      "target_weight": 0.01412,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 16.32,
+      "stop_pct": -13.01,
+      "profit_take_pct": 13.01,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ROST",
+      "target_weight": 0.01298,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.4148,
+      "last_close": 239.04,
+      "stop_pct": -13.3,
+      "profit_take_pct": 13.3,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EL",
+      "target_weight": 0.01289,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0388,
+      "last_close": 101.94,
+      "stop_pct": -27.79,
+      "profit_take_pct": 27.79,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NTAP",
+      "target_weight": 0.0127,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3988,
+      "last_close": 192.27,
+      "stop_pct": -17.8,
+      "profit_take_pct": 17.8,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TJX",
+      "target_weight": 0.01151,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0016,
+      "last_close": 140.53,
+      "stop_pct": -11.45,
+      "profit_take_pct": 11.45,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "JKHY",
+      "target_weight": 0.0115,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 166.2,
+      "stop_pct": -15.47,
+      "profit_take_pct": 15.47,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CASY",
+      "target_weight": 0.0111,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3988,
+      "last_close": 835.74,
+      "stop_pct": -13.89,
+      "profit_take_pct": 13.89,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "UAL",
+      "target_weight": 0.01083,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.212,
+      "last_close": 113.17,
+      "stop_pct": -17.7,
+      "profit_take_pct": 17.7,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TPR",
+      "target_weight": 0.01078,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.267,
+      "last_close": 130.17,
+      "stop_pct": -27.76,
+      "profit_take_pct": 27.76,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HD",
+      "target_weight": 0.01025,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 335.61,
+      "stop_pct": -11.45,
+      "profit_take_pct": 11.45,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BBY",
+      "target_weight": 0.01015,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.267,
+      "last_close": 85.89,
+      "stop_pct": -15.12,
+      "profit_take_pct": 15.12,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SO",
+      "target_weight": 0.00969,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2874,
+      "last_close": 88.94,
+      "stop_pct": -7.42,
+      "profit_take_pct": 7.42,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CRL",
+      "target_weight": 0.00965,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3988,
+      "last_close": 295.19,
+      "stop_pct": -19.69,
+      "profit_take_pct": 19.69,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TPL",
+      "target_weight": 0.00955,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.267,
+      "last_close": 383.64,
+      "stop_pct": -20.76,
+      "profit_take_pct": 20.76,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ADI",
+      "target_weight": 0.00951,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0967,
+      "last_close": 373.09,
+      "stop_pct": -14.74,
+      "profit_take_pct": 14.74,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ALB",
+      "target_weight": 0.00945,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3526,
+      "last_close": 143.25,
+      "stop_pct": -19.04,
+      "profit_take_pct": 19.04,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ECHO",
+      "target_weight": 0.00943,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3988,
+      "last_close": 86.81,
+      "stop_pct": -18.77,
+      "profit_take_pct": 18.77,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LUV",
+      "target_weight": 0.00939,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 40.38,
+      "stop_pct": -17.0,
+      "profit_take_pct": 17.0,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DUK",
+      "target_weight": 0.00891,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2874,
+      "last_close": 119.85,
+      "stop_pct": -8.13,
+      "profit_take_pct": 8.13,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NXPI",
+      "target_weight": 0.00885,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 225.56,
+      "stop_pct": -18.55,
+      "profit_take_pct": 18.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DE",
+      "target_weight": 0.00877,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1646,
+      "last_close": 647.47,
+      "stop_pct": -16.98,
+      "profit_take_pct": 16.98,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SPG",
+      "target_weight": 0.00857,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1958,
+      "last_close": 218.29,
+      "stop_pct": -7.5,
+      "profit_take_pct": 7.5,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MCD",
+      "target_weight": 0.00851,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 270.95,
+      "stop_pct": -8.45,
+      "profit_take_pct": 8.45,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BRK-B",
+      "target_weight": 0.00849,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 495.82,
+      "stop_pct": -6.68,
+      "profit_take_pct": 6.68,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AMCR",
+      "target_weight": 0.00823,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 48.59,
+      "stop_pct": -12.46,
+      "profit_take_pct": 12.46,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LOW",
+      "target_weight": 0.00817,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 216.09,
+      "stop_pct": -11.47,
+      "profit_take_pct": 11.47,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MRNA",
+      "target_weight": 0.00802,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.289,
+      "last_close": 145.13,
+      "stop_pct": -27.59,
+      "profit_take_pct": 27.59,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TSM",
+      "target_weight": 0.00762,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2531,
+      "last_close": 418.95,
+      "stop_pct": -16.31,
+      "profit_take_pct": 16.31,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WM",
+      "target_weight": 0.00755,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 224.06,
+      "stop_pct": -8.07,
+      "profit_take_pct": 8.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CNC",
+      "target_weight": 0.00752,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 65.02,
+      "stop_pct": -16.6,
+      "profit_take_pct": 16.6,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "APA",
+      "target_weight": 0.00732,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1757,
+      "last_close": 43.39,
+      "stop_pct": -19.59,
+      "profit_take_pct": 19.59,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "KEYS",
+      "target_weight": 0.00724,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 316.13,
+      "stop_pct": -20.33,
+      "profit_take_pct": 20.33,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WCC",
+      "target_weight": 0.00714,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 349.14,
+      "stop_pct": -21.44,
+      "profit_take_pct": 21.44,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EME",
+      "target_weight": 0.00714,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.267,
+      "last_close": 776.62,
+      "stop_pct": -23.44,
+      "profit_take_pct": 23.44,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TXN",
+      "target_weight": 0.00708,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2336,
+      "last_close": 264.36,
+      "stop_pct": -16.36,
+      "profit_take_pct": 16.36,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FIX",
+      "target_weight": 0.00704,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 1655.61,
+      "stop_pct": -25.87,
+      "profit_take_pct": 25.87,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CHRW",
+      "target_weight": 0.00699,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3988,
+      "last_close": 141.63,
+      "stop_pct": -23.55,
+      "profit_take_pct": 23.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CF",
+      "target_weight": 0.00695,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1757,
+      "last_close": 129.6,
+      "stop_pct": -18.45,
+      "profit_take_pct": 18.45,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AKAM",
+      "target_weight": 0.00691,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3988,
+      "last_close": 110.42,
+      "stop_pct": -23.99,
+      "profit_take_pct": 23.99,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MA",
+      "target_weight": 0.00678,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0661,
+      "last_close": 580.63,
+      "stop_pct": -8.6,
+      "profit_take_pct": 8.6,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BN",
+      "target_weight": 0.00667,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.111,
+      "last_close": 41.69,
+      "stop_pct": -9.91,
+      "profit_take_pct": 9.91,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CBOE",
+      "target_weight": 0.00663,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.212,
+      "last_close": 300.74,
+      "stop_pct": -17.52,
+      "profit_take_pct": 17.52,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TGT",
+      "target_weight": 0.00659,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0179,
+      "last_close": 165.44,
+      "stop_pct": -14.42,
+      "profit_take_pct": 14.42,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TRMB",
+      "target_weight": 0.00629,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 60.25,
+      "stop_pct": -15.66,
+      "profit_take_pct": 15.66,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NVTS",
+      "target_weight": 0.00625,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4027,
+      "last_close": 12.97,
+      "stop_pct": -33.18,
+      "profit_take_pct": 33.18,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FLEX",
+      "target_weight": 0.00607,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 110.45,
+      "stop_pct": -29.32,
+      "profit_take_pct": 29.32,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MPWR",
+      "target_weight": 0.00604,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 1316.28,
+      "stop_pct": -23.62,
+      "profit_take_pct": 23.62,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FSLR",
+      "target_weight": 0.00596,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1303,
+      "last_close": 214.28,
+      "stop_pct": -21.7,
+      "profit_take_pct": 21.7,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BJ",
+      "target_weight": 0.00595,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1207,
+      "last_close": 96.42,
+      "stop_pct": -13.07,
+      "profit_take_pct": 13.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PG",
+      "target_weight": 0.00592,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 144.68,
+      "stop_pct": -7.22,
+      "profit_take_pct": 7.22,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FISV",
+      "target_weight": 0.00592,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1303,
+      "last_close": 52.58,
+      "stop_pct": -18.12,
+      "profit_take_pct": 18.12,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "STLD",
+      "target_weight": 0.00546,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 228.68,
+      "stop_pct": -20.75,
+      "profit_take_pct": 20.75,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RRX",
+      "target_weight": 0.00538,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 166.15,
+      "stop_pct": -27.49,
+      "profit_take_pct": 27.49,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DVA",
+      "target_weight": 0.00498,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 173.82,
+      "stop_pct": -24.19,
+      "profit_take_pct": 24.19,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "JAZZ",
+      "target_weight": 0.00496,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.289,
+      "last_close": 254.28,
+      "stop_pct": -45.25,
+      "profit_take_pct": 45.25,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ESI",
+      "target_weight": 0.00488,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 35.31,
+      "stop_pct": -18.3,
+      "profit_take_pct": 18.3,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TECH",
+      "target_weight": 0.00487,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0092,
+      "last_close": 72.32,
+      "stop_pct": -11.01,
+      "profit_take_pct": 11.01,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PNR",
+      "target_weight": 0.00486,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 64.4,
+      "stop_pct": -18.13,
+      "profit_take_pct": 18.13,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TER",
+      "target_weight": 0.00486,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 375.74,
+      "stop_pct": -36.48,
+      "profit_take_pct": 36.48,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GNRC",
+      "target_weight": 0.00466,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.212,
+      "last_close": 205.98,
+      "stop_pct": -20.59,
+      "profit_take_pct": 20.59,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "APH",
+      "target_weight": 0.00455,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 157.01,
+      "stop_pct": -19.34,
+      "profit_take_pct": 19.34,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IRM",
+      "target_weight": 0.00454,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0901,
+      "last_close": 122.02,
+      "stop_pct": -13.26,
+      "profit_take_pct": 13.26,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CIEN",
+      "target_weight": 0.00448,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 395.79,
+      "stop_pct": -33.3,
+      "profit_take_pct": 33.3,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BAC",
+      "target_weight": 0.00435,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1884,
+      "last_close": 61.69,
+      "stop_pct": -7.67,
+      "profit_take_pct": 7.67,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RL",
+      "target_weight": 0.0042,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 372.59,
+      "stop_pct": -12.72,
+      "profit_take_pct": 12.72,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MCO",
+      "target_weight": 0.00418,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0661,
+      "last_close": 503.32,
+      "stop_pct": -10.34,
+      "profit_take_pct": 10.34,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ZTS",
+      "target_weight": 0.00416,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0564,
+      "last_close": 77.73,
+      "stop_pct": -17.1,
+      "profit_take_pct": 17.1,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "INSM",
+      "target_weight": 0.00415,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.289,
+      "last_close": 125.77,
+      "stop_pct": -55.89,
+      "profit_take_pct": 55.89,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LUNR",
+      "target_weight": 0.00406,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.289,
+      "last_close": 18.32,
+      "stop_pct": -51.03,
+      "profit_take_pct": 51.03,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CAH",
+      "target_weight": 0.00404,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 229.51,
+      "stop_pct": -9.85,
+      "profit_take_pct": 9.85,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "JBHT",
+      "target_weight": 0.00397,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 275.45,
+      "stop_pct": -12.95,
+      "profit_take_pct": 12.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SNOW",
+      "target_weight": 0.00391,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0979,
+      "last_close": 332.78,
+      "stop_pct": -17.92,
+      "profit_take_pct": 17.92,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "OKTA",
+      "target_weight": 0.00388,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 135.14,
+      "stop_pct": -22.04,
+      "profit_take_pct": 22.04,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LIN",
+      "target_weight": 0.00384,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1207,
+      "last_close": 487.57,
+      "stop_pct": -9.48,
+      "profit_take_pct": 9.48,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ROKU",
+      "target_weight": 0.00379,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.288,
+      "last_close": 157.49,
+      "stop_pct": -9.98,
+      "profit_take_pct": 9.98,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TECK",
+      "target_weight": 0.00376,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0599,
+      "last_close": 69.2,
+      "stop_pct": -19.98,
+      "profit_take_pct": 19.98,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "JBL",
+      "target_weight": 0.00376,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 313.21,
+      "stop_pct": -24.48,
+      "profit_take_pct": 24.48,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HPE",
+      "target_weight": 0.00369,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 53.45,
+      "stop_pct": -23.8,
+      "profit_take_pct": 23.8,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RIOT",
+      "target_weight": 0.00368,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4027,
+      "last_close": 19.83,
+      "stop_pct": -59.76,
+      "profit_take_pct": 59.76,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EVRG",
+      "target_weight": 0.00368,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1958,
+      "last_close": 80.92,
+      "stop_pct": -7.36,
+      "profit_take_pct": 7.36,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FERG",
+      "target_weight": 0.00363,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 242.24,
+      "stop_pct": -14.0,
+      "profit_take_pct": 14.0,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LITE",
+      "target_weight": 0.0036,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 866.71,
+      "stop_pct": -45.14,
+      "profit_take_pct": 45.14,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ATO",
+      "target_weight": 0.00356,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 166.85,
+      "stop_pct": -6.66,
+      "profit_take_pct": 6.66,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ADM",
+      "target_weight": 0.00355,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 80.3,
+      "stop_pct": -11.69,
+      "profit_take_pct": 11.69,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "COHR",
+      "target_weight": 0.00355,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4193,
+      "last_close": 289.52,
+      "stop_pct": -50.47,
+      "profit_take_pct": 50.47,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CL",
+      "target_weight": 0.00354,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 91.08,
+      "stop_pct": -9.06,
+      "profit_take_pct": 9.06,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PEG",
+      "target_weight": 0.00345,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 72.61,
+      "stop_pct": -7.35,
+      "profit_take_pct": 7.35,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FCX",
+      "target_weight": 0.00341,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0599,
+      "last_close": 76.66,
+      "stop_pct": -22.89,
+      "profit_take_pct": 22.89,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RMD",
+      "target_weight": 0.00331,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 231.52,
+      "stop_pct": -16.23,
+      "profit_take_pct": 16.23,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AGX",
+      "target_weight": 0.00328,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 501.63,
+      "stop_pct": -30.7,
+      "profit_take_pct": 30.7,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IBKR",
+      "target_weight": 0.00324,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 93.87,
+      "stop_pct": -16.98,
+      "profit_take_pct": 16.98,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "KDP",
+      "target_weight": 0.00321,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 32.04,
+      "stop_pct": -13.5,
+      "profit_take_pct": 13.5,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CSCO",
+      "target_weight": 0.00316,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.017,
+      "last_close": 111.04,
+      "stop_pct": -17.22,
+      "profit_take_pct": 17.22,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PPL",
+      "target_weight": 0.0031,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 34.38,
+      "stop_pct": -7.92,
+      "profit_take_pct": 7.92,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AMAT",
+      "target_weight": 0.0031,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 492.32,
+      "stop_pct": -31.07,
+      "profit_take_pct": 31.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SRE",
+      "target_weight": 0.00307,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1121,
+      "last_close": 82.89,
+      "stop_pct": -11.95,
+      "profit_take_pct": 11.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TKO",
+      "target_weight": 0.00305,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 193.14,
+      "stop_pct": -14.39,
+      "profit_take_pct": 14.39,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ED",
+      "target_weight": 0.00303,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 106.35,
+      "stop_pct": -6.78,
+      "profit_take_pct": 6.78,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BIIB",
+      "target_weight": 0.003,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0901,
+      "last_close": 216.78,
+      "stop_pct": -15.65,
+      "profit_take_pct": 15.65,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MOS",
+      "target_weight": 0.00299,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0564,
+      "last_close": 24.41,
+      "stop_pct": -19.52,
+      "profit_take_pct": 19.52,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TTD",
+      "target_weight": 0.00299,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1303,
+      "last_close": 13.18,
+      "stop_pct": -37.42,
+      "profit_take_pct": 37.42,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AVGO",
+      "target_weight": 0.00291,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1199,
+      "last_close": 368.45,
+      "stop_pct": -19.23,
+      "profit_take_pct": 19.23,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ZM",
+      "target_weight": 0.00288,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1121,
+      "last_close": 107.43,
+      "stop_pct": -16.35,
+      "profit_take_pct": 16.35,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TAP",
+      "target_weight": 0.00287,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 42.94,
+      "stop_pct": -13.65,
+      "profit_take_pct": 13.65,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LYB",
+      "target_weight": 0.00284,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1757,
+      "last_close": 67.53,
+      "stop_pct": -15.29,
+      "profit_take_pct": 15.29,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SYY",
+      "target_weight": 0.00284,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 84.1,
+      "stop_pct": -7.47,
+      "profit_take_pct": 7.47,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ASML",
+      "target_weight": 0.00282,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2531,
+      "last_close": 1763.76,
+      "stop_pct": -19.33,
+      "profit_take_pct": 19.33,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TDG",
+      "target_weight": 0.0028,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 1200.35,
+      "stop_pct": -12.02,
+      "profit_take_pct": 12.02,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WYNN",
+      "target_weight": 0.00279,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 100.28,
+      "stop_pct": -9.48,
+      "profit_take_pct": 9.48,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RTX",
+      "target_weight": 0.00277,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1884,
+      "last_close": 209.91,
+      "stop_pct": -12.09,
+      "profit_take_pct": 12.09,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IDXX",
+      "target_weight": 0.00277,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 556.93,
+      "stop_pct": -13.03,
+      "profit_take_pct": 13.03,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TTWO",
+      "target_weight": 0.00272,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 239.62,
+      "stop_pct": -14.3,
+      "profit_take_pct": 14.3,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TXRH",
+      "target_weight": 0.00271,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1121,
+      "last_close": 204.48,
+      "stop_pct": -11.34,
+      "profit_take_pct": 11.34,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WBD",
+      "target_weight": 0.00271,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0179,
+      "last_close": 28.55,
+      "stop_pct": -8.59,
+      "profit_take_pct": 8.59,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EBAY",
+      "target_weight": 0.00266,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1121,
+      "last_close": 104.13,
+      "stop_pct": -14.35,
+      "profit_take_pct": 14.35,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PODD",
+      "target_weight": 0.00265,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1303,
+      "last_close": 148.16,
+      "stop_pct": -30.64,
+      "profit_take_pct": 30.64,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PANW",
+      "target_weight": 0.00263,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 357.87,
+      "stop_pct": -19.76,
+      "profit_take_pct": 19.76,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "KVUE",
+      "target_weight": 0.00259,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 19.06,
+      "stop_pct": -9.07,
+      "profit_take_pct": 9.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CTAS",
+      "target_weight": 0.00258,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 203.79,
+      "stop_pct": -10.8,
+      "profit_take_pct": 10.8,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SMCI",
+      "target_weight": 0.00257,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1219,
+      "last_close": 37.24,
+      "stop_pct": -41.37,
+      "profit_take_pct": 41.37,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CEG",
+      "target_weight": 0.00254,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 272.88,
+      "stop_pct": -14.94,
+      "profit_take_pct": 14.94,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HWM",
+      "target_weight": 0.00248,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0761,
+      "last_close": 271.68,
+      "stop_pct": -12.49,
+      "profit_take_pct": 12.49,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AIG",
+      "target_weight": 0.00246,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 76.12,
+      "stop_pct": -7.76,
+      "profit_take_pct": 7.76,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "F",
+      "target_weight": 0.00244,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0571,
+      "last_close": 14.41,
+      "stop_pct": -15.14,
+      "profit_take_pct": 15.14,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PGR",
+      "target_weight": 0.00239,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1207,
+      "last_close": 219.28,
+      "stop_pct": -14.5,
+      "profit_take_pct": 14.5,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MARA",
+      "target_weight": 0.00234,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4027,
+      "last_close": 11.26,
+      "stop_pct": -83.55,
+      "profit_take_pct": 83.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BIDU",
+      "target_weight": 0.00231,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 93.21,
+      "stop_pct": -24.27,
+      "profit_take_pct": 24.27,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "APLD",
+      "target_weight": 0.00231,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4027,
+      "last_close": 27.21,
+      "stop_pct": -90.57,
+      "profit_take_pct": 90.57,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "Q",
+      "target_weight": 0.00229,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1509,
+      "last_close": 128.88,
+      "stop_pct": -24.63,
+      "profit_take_pct": 24.63,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SCCO",
+      "target_weight": 0.00228,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0599,
+      "last_close": 216.0,
+      "stop_pct": -24.13,
+      "profit_take_pct": 24.13,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VRTX",
+      "target_weight": 0.00222,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.079,
+      "last_close": 548.05,
+      "stop_pct": -14.62,
+      "profit_take_pct": 14.62,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LDOS",
+      "target_weight": 0.00221,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0837,
+      "last_close": 141.39,
+      "stop_pct": -18.16,
+      "profit_take_pct": 18.16,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EXPE",
+      "target_weight": 0.00215,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0901,
+      "last_close": 321.63,
+      "stop_pct": -16.98,
+      "profit_take_pct": 16.98,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "JPM",
+      "target_weight": 0.00214,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1884,
+      "last_close": 351.58,
+      "stop_pct": -7.81,
+      "profit_take_pct": 7.81,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FIS",
+      "target_weight": 0.00213,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0267,
+      "last_close": 41.34,
+      "stop_pct": -16.11,
+      "profit_take_pct": 16.11,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CAT",
+      "target_weight": 0.00211,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 827.9,
+      "stop_pct": -17.86,
+      "profit_take_pct": 17.86,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "OKE",
+      "target_weight": 0.0021,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0571,
+      "last_close": 93.33,
+      "stop_pct": -11.52,
+      "profit_take_pct": 11.52,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SBUX",
+      "target_weight": 0.00206,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.2937,
+      "last_close": 107.08,
+      "stop_pct": -9.42,
+      "profit_take_pct": 9.42,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PAAS",
+      "target_weight": 0.00205,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0599,
+      "last_close": 53.07,
+      "stop_pct": -26.07,
+      "profit_take_pct": 26.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "KMB",
+      "target_weight": 0.00204,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 109.31,
+      "stop_pct": -11.12,
+      "profit_take_pct": 11.12,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IBN",
+      "target_weight": 0.00203,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.111,
+      "last_close": 29.91,
+      "stop_pct": -6.95,
+      "profit_take_pct": 6.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WEC",
+      "target_weight": 0.00201,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 106.01,
+      "stop_pct": -8.14,
+      "profit_take_pct": 8.14,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LFUS",
+      "target_weight": 0.00199,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.017,
+      "last_close": 412.26,
+      "stop_pct": -20.49,
+      "profit_take_pct": 20.49,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FDXF",
+      "target_weight": 0.00198,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1806,
+      "last_close": 137.32,
+      "stop_pct": -24.1,
+      "profit_take_pct": 24.1,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "USB",
+      "target_weight": 0.00196,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1679,
+      "last_close": 62.05,
+      "stop_pct": -8.51,
+      "profit_take_pct": 8.51,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EIX",
+      "target_weight": 0.00196,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 71.59,
+      "stop_pct": -14.92,
+      "profit_take_pct": 14.92,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "STE",
+      "target_weight": 0.00192,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 237.93,
+      "stop_pct": -10.94,
+      "profit_take_pct": 10.94,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "V",
+      "target_weight": 0.0019,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0661,
+      "last_close": 371.04,
+      "stop_pct": -7.94,
+      "profit_take_pct": 7.94,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "P",
+      "target_weight": 0.00189,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.3192,
+      "last_close": 108.55,
+      "stop_pct": -28.89,
+      "profit_take_pct": 28.89,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "O",
+      "target_weight": 0.00189,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 62.6,
+      "stop_pct": -6.26,
+      "profit_take_pct": 6.26,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MDB",
+      "target_weight": 0.00186,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1199,
+      "last_close": 430.83,
+      "stop_pct": -26.84,
+      "profit_take_pct": 26.84,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "STM",
+      "target_weight": 0.00184,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 50.56,
+      "stop_pct": -30.55,
+      "profit_take_pct": 30.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WCN",
+      "target_weight": 0.00183,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0035,
+      "last_close": 169.4,
+      "stop_pct": -8.23,
+      "profit_take_pct": 8.23,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RMBS",
+      "target_weight": 0.00181,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 91.24,
+      "stop_pct": -29.67,
+      "profit_take_pct": 29.67,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DVN",
+      "target_weight": 0.00179,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0285,
+      "last_close": 49.1,
+      "stop_pct": -15.52,
+      "profit_take_pct": 15.52,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AXON",
+      "target_weight": 0.00178,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.2539,
+      "last_close": 627.75,
+      "stop_pct": -33.3,
+      "profit_take_pct": 33.3,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TSN",
+      "target_weight": 0.00178,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 58.48,
+      "stop_pct": -10.98,
+      "profit_take_pct": 10.98,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IONS",
+      "target_weight": 0.00177,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0123,
+      "last_close": 59.74,
+      "stop_pct": -23.5,
+      "profit_take_pct": 23.5,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CRWD",
+      "target_weight": 0.00175,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 191.95,
+      "stop_pct": -22.44,
+      "profit_take_pct": 22.44,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WAT",
+      "target_weight": 0.00174,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0571,
+      "last_close": 410.7,
+      "stop_pct": -13.29,
+      "profit_take_pct": 13.29,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AFL",
+      "target_weight": 0.00173,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 116.07,
+      "stop_pct": -8.61,
+      "profit_take_pct": 8.61,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VICI",
+      "target_weight": 0.00173,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 26.51,
+      "stop_pct": -8.24,
+      "profit_take_pct": 8.24,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WFC",
+      "target_weight": 0.00172,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 83.84,
+      "stop_pct": -9.67,
+      "profit_take_pct": 9.67,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WRB",
+      "target_weight": 0.00171,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 68.6,
+      "stop_pct": -8.08,
+      "profit_take_pct": 8.08,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "KMI",
+      "target_weight": 0.0017,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1884,
+      "last_close": 30.98,
+      "stop_pct": -9.81,
+      "profit_take_pct": 9.81,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AER",
+      "target_weight": 0.0017,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1884,
+      "last_close": 146.29,
+      "stop_pct": -9.84,
+      "profit_take_pct": 9.84,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "INCY",
+      "target_weight": 0.00169,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0285,
+      "last_close": 127.81,
+      "stop_pct": -14.6,
+      "profit_take_pct": 14.6,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VST",
+      "target_weight": 0.00169,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0129,
+      "last_close": 136.21,
+      "stop_pct": -19.06,
+      "profit_take_pct": 19.06,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WULF",
+      "target_weight": 0.00168,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 15.64,
+      "stop_pct": -40.44,
+      "profit_take_pct": 40.44,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CORZ",
+      "target_weight": 0.00167,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 17.81,
+      "stop_pct": -37.37,
+      "profit_take_pct": 37.37,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GEN",
+      "target_weight": 0.00165,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 28.93,
+      "stop_pct": -15.11,
+      "profit_take_pct": 15.11,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PRU",
+      "target_weight": 0.00162,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 121.15,
+      "stop_pct": -7.95,
+      "profit_take_pct": 7.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DOC",
+      "target_weight": 0.00159,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 21.4,
+      "stop_pct": -9.91,
+      "profit_take_pct": 9.91,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NVS",
+      "target_weight": 0.00159,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.2937,
+      "last_close": 158.86,
+      "stop_pct": -11.06,
+      "profit_take_pct": 11.06,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FN",
+      "target_weight": 0.00157,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 436.67,
+      "stop_pct": -46.39,
+      "profit_take_pct": 46.39,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CLX",
+      "target_weight": 0.00156,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 106.69,
+      "stop_pct": -12.97,
+      "profit_take_pct": 12.97,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SBAC",
+      "target_weight": 0.00156,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 182.59,
+      "stop_pct": -13.55,
+      "profit_take_pct": 13.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PFE",
+      "target_weight": 0.00155,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0661,
+      "last_close": 28.07,
+      "stop_pct": -10.06,
+      "profit_take_pct": 10.06,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ECL",
+      "target_weight": 0.00154,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 281.63,
+      "stop_pct": -9.05,
+      "profit_take_pct": 9.05,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NI",
+      "target_weight": 0.00153,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 40.62,
+      "stop_pct": -9.07,
+      "profit_take_pct": 9.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BR",
+      "target_weight": 0.00153,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 182.18,
+      "stop_pct": -15.84,
+      "profit_take_pct": 15.84,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "STX",
+      "target_weight": 0.00152,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 850.0,
+      "stop_pct": -35.7,
+      "profit_take_pct": 35.7,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "APTV",
+      "target_weight": 0.00151,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1203,
+      "last_close": 48.28,
+      "stop_pct": -25.93,
+      "profit_take_pct": 25.93,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ABVX",
+      "target_weight": 0.00149,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 114.95,
+      "stop_pct": -29.87,
+      "profit_take_pct": 29.87,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FOXA",
+      "target_weight": 0.00148,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 68.54,
+      "stop_pct": -16.75,
+      "profit_take_pct": 16.75,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CLSK",
+      "target_weight": 0.00148,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 11.98,
+      "stop_pct": -40.17,
+      "profit_take_pct": 40.17,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HUT",
+      "target_weight": 0.00147,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 80.86,
+      "stop_pct": -46.52,
+      "profit_take_pct": 46.52,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "WDC",
+      "target_weight": 0.00146,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 459.44,
+      "stop_pct": -40.65,
+      "profit_take_pct": 40.65,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PEP",
+      "target_weight": 0.00144,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0661,
+      "last_close": 143.48,
+      "stop_pct": -8.65,
+      "profit_take_pct": 8.65,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CIFR",
+      "target_weight": 0.00141,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 15.76,
+      "stop_pct": -58.11,
+      "profit_take_pct": 58.11,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NOC",
+      "target_weight": 0.0014,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1006,
+      "last_close": 551.03,
+      "stop_pct": -12.59,
+      "profit_take_pct": 12.59,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ALGN",
+      "target_weight": 0.00139,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.212,
+      "last_close": 162.55,
+      "stop_pct": -17.91,
+      "profit_take_pct": 17.91,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DLTR",
+      "target_weight": 0.00138,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.111,
+      "last_close": 131.48,
+      "stop_pct": -12.62,
+      "profit_take_pct": 12.62,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MET",
+      "target_weight": 0.00136,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 94.34,
+      "stop_pct": -9.09,
+      "profit_take_pct": 9.09,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SEDG",
+      "target_weight": 0.00134,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2516,
+      "last_close": 30.83,
+      "stop_pct": -53.13,
+      "profit_take_pct": 53.13,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MELI",
+      "target_weight": 0.00133,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1587,
+      "last_close": 1922.73,
+      "stop_pct": -18.9,
+      "profit_take_pct": 18.9,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HST",
+      "target_weight": 0.0013,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 23.21,
+      "stop_pct": -11.71,
+      "profit_take_pct": 11.71,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GWW",
+      "target_weight": 0.00128,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 1312.24,
+      "stop_pct": -9.16,
+      "profit_take_pct": 9.16,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AEHR",
+      "target_weight": 0.00128,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 101.73,
+      "stop_pct": -65.63,
+      "profit_take_pct": 65.63,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CDW",
+      "target_weight": 0.00125,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1303,
+      "last_close": 137.25,
+      "stop_pct": -20.51,
+      "profit_take_pct": 20.51,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "COR",
+      "target_weight": 0.00124,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 318.04,
+      "stop_pct": -13.31,
+      "profit_take_pct": 13.31,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HAL",
+      "target_weight": 0.00124,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 35.34,
+      "stop_pct": -14.69,
+      "profit_take_pct": 14.69,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RSG",
+      "target_weight": 0.00124,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1736,
+      "last_close": 220.67,
+      "stop_pct": -8.26,
+      "profit_take_pct": 8.26,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "STRC",
+      "target_weight": 0.00123,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0035,
+      "last_close": 96.18,
+      "stop_pct": -11.26,
+      "profit_take_pct": 11.26,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ICE",
+      "target_weight": 0.00122,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0661,
+      "last_close": 161.25,
+      "stop_pct": -9.65,
+      "profit_take_pct": 9.65,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BMNR",
+      "target_weight": 0.00121,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4027,
+      "last_close": 22.83,
+      "stop_pct": -142.88,
+      "profit_take_pct": 142.88,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PSX",
+      "target_weight": 0.00121,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0328,
+      "last_close": 242.87,
+      "stop_pct": -14.24,
+      "profit_take_pct": 14.24,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EXPD",
+      "target_weight": 0.0012,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0285,
+      "last_close": 187.81,
+      "stop_pct": -11.52,
+      "profit_take_pct": 11.52,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GILD",
+      "target_weight": 0.00117,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.2196,
+      "last_close": 146.12,
+      "stop_pct": -13.03,
+      "profit_take_pct": 13.03,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BG",
+      "target_weight": 0.00117,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 113.11,
+      "stop_pct": -14.31,
+      "profit_take_pct": 14.31,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PDD",
+      "target_weight": 0.00115,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 88.38,
+      "stop_pct": -14.71,
+      "profit_take_pct": 14.71,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LMT",
+      "target_weight": 0.00112,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1679,
+      "last_close": 563.57,
+      "stop_pct": -15.02,
+      "profit_take_pct": 15.02,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MRK",
+      "target_weight": 0.00112,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0708,
+      "last_close": 152.55,
+      "stop_pct": -20.99,
+      "profit_take_pct": 20.99,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CPAY",
+      "target_weight": 0.00112,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1121,
+      "last_close": 417.13,
+      "stop_pct": -12.05,
+      "profit_take_pct": 12.05,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BALL",
+      "target_weight": 0.00111,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1862,
+      "last_close": 63.59,
+      "stop_pct": -8.89,
+      "profit_take_pct": 8.89,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "J",
+      "target_weight": 0.0011,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 150.08,
+      "stop_pct": -11.61,
+      "profit_take_pct": 11.61,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "COP",
+      "target_weight": 0.00109,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0328,
+      "last_close": 134.87,
+      "stop_pct": -13.39,
+      "profit_take_pct": 13.39,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ETN",
+      "target_weight": 0.00109,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1199,
+      "last_close": 419.2,
+      "stop_pct": -19.72,
+      "profit_take_pct": 19.72,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "QUBT",
+      "target_weight": 0.00108,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.4027,
+      "last_close": 8.92,
+      "stop_pct": -164.95,
+      "profit_take_pct": 164.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MNST",
+      "target_weight": 0.00108,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1646,
+      "last_close": 47.79,
+      "stop_pct": -11.79,
+      "profit_take_pct": 11.79,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ALL",
+      "target_weight": 0.00101,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0571,
+      "last_close": 253.83,
+      "stop_pct": -12.61,
+      "profit_take_pct": 12.61,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ZBH",
+      "target_weight": 0.001,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 100.98,
+      "stop_pct": -12.73,
+      "profit_take_pct": 12.73,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TRGP",
+      "target_weight": 0.001,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0285,
+      "last_close": 299.1,
+      "stop_pct": -16.58,
+      "profit_take_pct": 16.58,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RGEN",
+      "target_weight": 0.001,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1759,
+      "last_close": 181.13,
+      "stop_pct": -20.49,
+      "profit_take_pct": 20.49,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BDX",
+      "target_weight": 0.001,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 192.0,
+      "stop_pct": -12.64,
+      "profit_take_pct": 12.64,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DOW",
+      "target_weight": 0.00096,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0901,
+      "last_close": 32.35,
+      "stop_pct": -15.71,
+      "profit_take_pct": 15.71,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NEM",
+      "target_weight": 0.00094,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1061,
+      "last_close": 131.58,
+      "stop_pct": -23.07,
+      "profit_take_pct": 23.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DY",
+      "target_weight": 0.00094,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 392.95,
+      "stop_pct": -22.74,
+      "profit_take_pct": 22.74,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SWK",
+      "target_weight": 0.00094,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0571,
+      "last_close": 100.02,
+      "stop_pct": -13.88,
+      "profit_take_pct": 13.88,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NVT",
+      "target_weight": 0.00091,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 151.98,
+      "stop_pct": -23.38,
+      "profit_take_pct": 23.38,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HII",
+      "target_weight": 0.00088,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2219,
+      "last_close": 298.2,
+      "stop_pct": -18.92,
+      "profit_take_pct": 18.92,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "UBER",
+      "target_weight": 0.00088,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1207,
+      "last_close": 78.8,
+      "stop_pct": -17.89,
+      "profit_take_pct": 17.89,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SW",
+      "target_weight": 0.00088,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.212,
+      "last_close": 49.39,
+      "stop_pct": -19.02,
+      "profit_take_pct": 19.02,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "EOG",
+      "target_weight": 0.00087,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.079,
+      "last_close": 153.05,
+      "stop_pct": -15.07,
+      "profit_take_pct": 15.07,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NRG",
+      "target_weight": 0.00087,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1303,
+      "last_close": 113.11,
+      "stop_pct": -28.9,
+      "profit_take_pct": 28.9,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BBIO",
+      "target_weight": 0.00084,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0747,
+      "last_close": 81.5,
+      "stop_pct": -15.41,
+      "profit_take_pct": 15.41,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "KHC",
+      "target_weight": 0.00082,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 25.58,
+      "stop_pct": -14.25,
+      "profit_take_pct": 14.25,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RIG",
+      "target_weight": 0.00082,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0761,
+      "last_close": 5.92,
+      "stop_pct": -18.08,
+      "profit_take_pct": 18.08,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MCK",
+      "target_weight": 0.00081,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0571,
+      "last_close": 858.9,
+      "stop_pct": -14.29,
+      "profit_take_pct": 14.29,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GPN",
+      "target_weight": 0.0008,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.134,
+      "last_close": 93.49,
+      "stop_pct": -17.75,
+      "profit_take_pct": 17.75,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SUNB",
+      "target_weight": 0.0008,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0213,
+      "last_close": 76.88,
+      "stop_pct": -19.31,
+      "profit_take_pct": 19.31,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ANET",
+      "target_weight": 0.00079,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1199,
+      "last_close": 188.65,
+      "stop_pct": -23.95,
+      "profit_take_pct": 23.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IFF",
+      "target_weight": 0.00078,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1121,
+      "last_close": 84.28,
+      "stop_pct": -15.92,
+      "profit_take_pct": 15.92,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "XYZ",
+      "target_weight": 0.00078,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 82.16,
+      "stop_pct": -16.94,
+      "profit_take_pct": 16.94,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CRS",
+      "target_weight": 0.00077,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.017,
+      "last_close": 492.38,
+      "stop_pct": -19.59,
+      "profit_take_pct": 19.59,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "OXY",
+      "target_weight": 0.00076,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0285,
+      "last_close": 61.3,
+      "stop_pct": -14.02,
+      "profit_take_pct": 14.02,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FANG",
+      "target_weight": 0.00075,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0285,
+      "last_close": 210.72,
+      "stop_pct": -14.56,
+      "profit_take_pct": 14.56,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AFRM",
+      "target_weight": 0.00073,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.3994,
+      "last_close": 77.03,
+      "stop_pct": -22.6,
+      "profit_take_pct": 22.6,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TMUS",
+      "target_weight": 0.00072,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 183.04,
+      "stop_pct": -16.35,
+      "profit_take_pct": 16.35,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AMZN",
+      "target_weight": 0.00072,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1176,
+      "last_close": 258.63,
+      "stop_pct": -19.2,
+      "profit_take_pct": 19.2,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GH",
+      "target_weight": 0.0007,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 170.69,
+      "stop_pct": -20.43,
+      "profit_take_pct": 20.43,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "INTC",
+      "target_weight": 0.0007,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 90.07,
+      "stop_pct": -30.55,
+      "profit_take_pct": 30.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PWR",
+      "target_weight": 0.0007,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 639.34,
+      "stop_pct": -24.02,
+      "profit_take_pct": 24.02,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GEV",
+      "target_weight": 0.00069,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 956.85,
+      "stop_pct": -22.32,
+      "profit_take_pct": 22.32,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RDDT",
+      "target_weight": 0.00069,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1303,
+      "last_close": 153.29,
+      "stop_pct": -40.18,
+      "profit_take_pct": 40.18,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ZBRA",
+      "target_weight": 0.00067,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1219,
+      "last_close": 368.51,
+      "stop_pct": -29.58,
+      "profit_take_pct": 29.58,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NXT",
+      "target_weight": 0.00066,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 86.18,
+      "stop_pct": -28.5,
+      "profit_take_pct": 28.5,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LRCX",
+      "target_weight": 0.00066,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 314.0,
+      "stop_pct": -32.29,
+      "profit_take_pct": 32.29,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DELL",
+      "target_weight": 0.00065,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 442.08,
+      "stop_pct": -32.65,
+      "profit_take_pct": 32.65,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "KLAC",
+      "target_weight": 0.00065,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 183.99,
+      "stop_pct": -28.33,
+      "profit_take_pct": 28.33,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MKSI",
+      "target_weight": 0.00064,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 279.11,
+      "stop_pct": -32.77,
+      "profit_take_pct": 32.77,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SYK",
+      "target_weight": 0.00063,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0131,
+      "last_close": 329.45,
+      "stop_pct": -15.96,
+      "profit_take_pct": 15.96,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "OSCR",
+      "target_weight": 0.00062,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0144,
+      "last_close": 32.04,
+      "stop_pct": -27.98,
+      "profit_take_pct": 27.98,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ASX",
+      "target_weight": 0.00061,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 36.51,
+      "stop_pct": -29.55,
+      "profit_take_pct": 29.55,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DASH",
+      "target_weight": 0.00061,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.1207,
+      "last_close": 223.49,
+      "stop_pct": -16.0,
+      "profit_take_pct": 16.0,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MTZ",
+      "target_weight": 0.00061,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 266.26,
+      "stop_pct": -34.91,
+      "profit_take_pct": 34.91,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VRT",
+      "target_weight": 0.0006,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 261.95,
+      "stop_pct": -30.72,
+      "profit_take_pct": 30.72,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SEI",
+      "target_weight": 0.00059,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 53.28,
+      "stop_pct": -37.92,
+      "profit_take_pct": 37.92,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VSAT",
+      "target_weight": 0.00059,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 74.72,
+      "stop_pct": -30.93,
+      "profit_take_pct": 30.93,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TSLA",
+      "target_weight": 0.00057,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.3112,
+      "last_close": 362.86,
+      "stop_pct": -22.48,
+      "profit_take_pct": 22.48,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IOT",
+      "target_weight": 0.00056,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.3697,
+      "last_close": 39.94,
+      "stop_pct": -24.02,
+      "profit_take_pct": 24.02,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RIVN",
+      "target_weight": 0.00056,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0257,
+      "last_close": 16.97,
+      "stop_pct": -28.09,
+      "profit_take_pct": 28.09,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "UUUU",
+      "target_weight": 0.00055,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0257,
+      "last_close": 15.14,
+      "stop_pct": -33.13,
+      "profit_take_pct": 33.13,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MTSI",
+      "target_weight": 0.00054,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 266.61,
+      "stop_pct": -35.8,
+      "profit_take_pct": 35.8,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "LSCC",
+      "target_weight": 0.00054,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 117.69,
+      "stop_pct": -27.53,
+      "profit_take_pct": 27.53,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VICR",
+      "target_weight": 0.00053,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 200.54,
+      "stop_pct": -40.63,
+      "profit_take_pct": 40.63,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AEIS",
+      "target_weight": 0.00053,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 285.83,
+      "stop_pct": -35.45,
+      "profit_take_pct": 35.45,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NTRA",
+      "target_weight": 0.00051,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0599,
+      "last_close": 332.03,
+      "stop_pct": -27.86,
+      "profit_take_pct": 27.86,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SANM",
+      "target_weight": 0.00051,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 188.89,
+      "stop_pct": -32.78,
+      "profit_take_pct": 32.78,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "RKLB",
+      "target_weight": 0.0005,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 72.57,
+      "stop_pct": -33.0,
+      "profit_take_pct": 33.0,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "GFS",
+      "target_weight": 0.0005,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 48.05,
+      "stop_pct": -28.26,
+      "profit_take_pct": 28.26,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "BTSG",
+      "target_weight": 0.0005,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 58.87,
+      "stop_pct": -26.45,
+      "profit_take_pct": 26.45,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "QCOM",
+      "target_weight": 0.0005,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1786,
+      "last_close": 160.75,
+      "stop_pct": -19.6,
+      "profit_take_pct": 19.6,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TTMI",
+      "target_weight": 0.00049,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 110.54,
+      "stop_pct": -38.96,
+      "profit_take_pct": 38.96,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "CRDO",
+      "target_weight": 0.00049,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 230.57,
+      "stop_pct": -43.43,
+      "profit_take_pct": 43.43,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "MCHP",
+      "target_weight": 0.00049,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1199,
+      "last_close": 76.08,
+      "stop_pct": -25.78,
+      "profit_take_pct": 25.78,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SMTC",
+      "target_weight": 0.00048,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 124.09,
+      "stop_pct": -43.68,
+      "profit_take_pct": 43.68,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AMKR",
+      "target_weight": 0.00048,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 50.26,
+      "stop_pct": -44.38,
+      "profit_take_pct": 44.38,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ONDS",
+      "target_weight": 0.00047,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 8.71,
+      "stop_pct": -36.15,
+      "profit_take_pct": 36.15,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DOCN",
+      "target_weight": 0.00045,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 115.64,
+      "stop_pct": -36.95,
+      "profit_take_pct": 36.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TSEM",
+      "target_weight": 0.00045,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 222.59,
+      "stop_pct": -41.06,
+      "profit_take_pct": 41.06,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VIAV",
+      "target_weight": 0.00044,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 38.9,
+      "stop_pct": -38.16,
+      "profit_take_pct": 38.16,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "OUST",
+      "target_weight": 0.00043,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1199,
+      "last_close": 38.42,
+      "stop_pct": -49.73,
+      "profit_take_pct": 49.73,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "TWLO",
+      "target_weight": 0.00042,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 225.3,
+      "stop_pct": -33.0,
+      "profit_take_pct": 33.0,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DAVE",
+      "target_weight": 0.00038,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0144,
+      "last_close": 354.72,
+      "stop_pct": -34.97,
+      "profit_take_pct": 34.97,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FLNC",
+      "target_weight": 0.00037,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 11.34,
+      "stop_pct": -37.95,
+      "profit_take_pct": 37.95,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "PENG",
+      "target_weight": 0.00037,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 52.62,
+      "stop_pct": -44.72,
+      "profit_take_pct": 44.72,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "IREN",
+      "target_weight": 0.00036,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.2736,
+      "last_close": 41.88,
+      "stop_pct": -46.89,
+      "profit_take_pct": 46.89,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "DDOG",
+      "target_weight": 0.00035,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 235.62,
+      "stop_pct": -34.61,
+      "profit_take_pct": 34.61,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "ONTO",
+      "target_weight": 0.00034,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 293.33,
+      "stop_pct": -42.57,
+      "profit_take_pct": 42.57,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SITM",
+      "target_weight": 0.00032,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 614.83,
+      "stop_pct": -46.23,
+      "profit_take_pct": 46.23,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FORM",
+      "target_weight": 0.00032,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 114.16,
+      "stop_pct": -45.8,
+      "profit_take_pct": 45.8,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "APP",
+      "target_weight": 0.00032,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.0129,
+      "last_close": 305.77,
+      "stop_pct": -33.59,
+      "profit_take_pct": 33.59,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SIMO",
+      "target_weight": 0.00032,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 258.36,
+      "stop_pct": -43.69,
+      "profit_take_pct": 43.69,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "VSH",
+      "target_weight": 0.00029,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 31.63,
+      "stop_pct": -39.19,
+      "profit_take_pct": 39.19,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "NBIS",
+      "target_weight": 0.00027,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 219.13,
+      "stop_pct": -66.19,
+      "profit_take_pct": 66.19,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "FCEL",
+      "target_weight": 0.00025,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 19.54,
+      "stop_pct": -59.18,
+      "profit_take_pct": 59.18,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AAOI",
+      "target_weight": 0.00025,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 124.82,
+      "stop_pct": -60.74,
+      "profit_take_pct": 60.74,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "AXTI",
+      "target_weight": 0.00021,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 70.74,
+      "stop_pct": -74.77,
+      "profit_take_pct": 74.77,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "HONA",
+      "target_weight": 0.00021,
+      "current_weight": 0.0,
+      "ensemble_rank": -0.0998,
+      "last_close": 164.73,
+      "stop_pct": -61.04,
+      "profit_take_pct": 61.04,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "SNDK",
+      "target_weight": 0.00018,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.1599,
+      "last_close": 1596.08,
+      "stop_pct": -55.31,
+      "profit_take_pct": 55.31,
+      "max_hold_sessions": 20
+    },
+    {
+      "ticker": "QXO",
+      "target_weight": 4e-05,
+      "current_weight": 0.0,
+      "ensemble_rank": 0.289,
+      "last_close": 13.76,
+      "stop_pct": -338.46,
+      "profit_take_pct": 338.46,
+      "max_hold_sessions": 20
+    }
+  ],
+  "holds": [],
+  "sells_or_exits": [],
+  "exit_rules": {
+    "engine": "M5.2 triple barrier",
+    "m": 1.5,
+    "h_sessions": 20,
+    "note": "stop/profit-take are % vs ACTUAL fill at next open; vertical exit = MOO at t+h+1"
+  },
+  "disclaimer": "Research output of an experimental system; NOT financial advice. All performance claims require the G-11 gate evaluation first."
+}

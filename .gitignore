@@ -4,7 +4,24 @@
 /data_nasdaq/
 # Downloaded Tiingo data (mirrored by data_acquisition/scripts/download.sh)
 /data_tiingo/
+# Other volume mirrors (borrow, calendar, finbert, M1 landing layer, whole-market panel)
+/data_borrow/
+/data_calendar/
+/data_finbert/
+/data_quality/
+/m1/
+/m1x/
 .DS_Store
 __pycache__/
 *.pyc
 .env
+
+# --- prediction stack: generated / downloaded, never sourced from git ---
+.pytest_cache/
+derived_*/
+artifacts/models/
+artifacts/scores/
+scratch*/
+*.log
+# reports stay tracked (small, reviewable): artifacts/reports/
+# ledger/trials.parquet stays tracked (G-09 append-only audit trail)
