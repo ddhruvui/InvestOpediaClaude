@@ -37,6 +37,8 @@ ledger/trials.parquet   # every evaluated config -> DSR's N (G-09)
 ## RunPod jobs
 
 ```sh
+scripts/daily.sh                    # one-command daily loop: fetch -> post -> market
+                                    # -> predict -> mirror -> reports/latest
 scripts/launch_predict.sh test      # T-suite on a CPU pod (validates pod env)
 scripts/launch_predict.sh market    # eod_bulk -> m1x: whole-market panel + top-1000
                                     # survivorship-free universe (G-05). Resumable.

@@ -228,6 +228,10 @@ The modelling/backtest/prediction system lives at repo root (`src/`, `configs/sy
 network volume as the fetchers; local execution is for unit tests and synthetic rehearsals only.
 
 ```sh
+scripts/daily.sh                    # THE daily loop, one command: fetch -> post ->
+                                    #   market -> predict -> mirror -> reports/latest
+                                    #   (SKIP_FETCH=1 / REFIT=full / FULL_MIRROR=1)
+
 scripts/launch_predict.sh test      # T-01..T-15 suite on a CPU pod (validates pod env)
 scripts/launch_predict.sh market    # eod_bulk -> m1x whole-market panel + top-1000
                                     #   survivorship-free universe (G-05); resumable
@@ -263,11 +267,17 @@ persist on the volume under `/workspace/models/` (`MODEL_DIR`), and each daily r
 
 `REFIT=full scripts/launch_predict.sh predict` forces a from-scratch fit (also automatic
 after any `configs/system.yaml` change, feature-set change, or on the 21-session cadence).
-So the daily loop is: `launch.sh all` + `post` (delta fetch + M1 rebuild) →
-`launch_predict.sh market` (resumable, adds new days) → `launch_predict.sh predict`
-(warm) → mirror + `tools/build_reports.py`. Stage 1/2/3 are the research/backtest
-reports — they only need re-running when code or config changes, or on the monthly
-cadence to refresh the G-11 gate verdict.
+
+**The whole loop is one command: `scripts/daily.sh`** (evenings after ~21:00 UTC). It
+sequences fetch → post (waits for the pod AND verifies m1 was rebuilt *today*) →
+market → predict (each watched to completion via `watch_jobs.sh`, one auto-relaunch)
+→ mirrors `suggestions.json`/`.md` + stage reports off the volume → rebuilds
+`reports/latest`. `SKIP_FETCH=1` when data is already in; `FULL_MIRROR=1` after a
+stage3 rerun to re-pull the equity/trades parquets. Stage 1/2/3 are the
+research/backtest reports — they only need re-running when code or config changes,
+or on the monthly cadence to refresh the G-11 gate verdict; they are deliberately
+NOT part of `daily.sh`. (`overnight_orchestrator.sh` and `finalize_overnight.sh`
+are one-offs from the initial build, not the daily loop.)
 
 - Pods self-terminate with a confirmed DELETE; a restart marker prevents billing loops.
   `KEEP_POD=1` keeps a pod alive for inspection; `RUNPOD_VCPU=8` (16 GB) is required for

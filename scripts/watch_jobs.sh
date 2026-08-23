@@ -11,6 +11,12 @@ check_job() {  # $1=job  $2=relaunched-flag-file ; echo status: running|done|fai
   ROW=$(aws s3 ls $S3FLAGS "$BUCKET/_pod_logs/" 2>/dev/null | grep "predict-$j-" | tail -1)
   if [ -z "$ROW" ]; then say "WARN: cannot list logs for $j"; echo running; return; fi
   LOG=$(printf '%s' "$ROW" | awk '{print $4}')
+  # WATCH_SINCE (UTC %Y%m%dT%H%M%SZ): ignore logs from BEFORE this launch — on a
+  # daily cadence yesterday's job=0 log would otherwise read as instant success
+  # while today's pod is still booting
+  if [ -n "${WATCH_SINCE:-}" ] && [ "${LOG%%-predict-*}" \< "$WATCH_SINCE" ]; then
+    say "$j: latest log predates this launch — pod still booting"; echo running; return
+  fi
   TAIL=$(aws s3 cp $S3FLAGS "$BUCKET/_pod_logs/$LOG" - 2>/dev/null | tail -5)
   if echo "$TAIL" | grep -q "job=0"; then say "$j SUCCEEDED ($LOG)"; echo done; return; fi
   if echo "$TAIL" | grep -qE "job=[0-9]"; then

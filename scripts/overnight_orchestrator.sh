@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# [ONE-OFF from the initial overnight build — runs stages LOCALLY, predating
+# the RunPod-first rule. The daily loop is scripts/daily.sh.]
 # Overnight autonomy: watch stage2 GPU every 5 min with crash-loop/stall
 # detection and ONE auto-relaunch; on success run stage3 + predict locally and
 # assemble the final report. All output to the orchestrator log.

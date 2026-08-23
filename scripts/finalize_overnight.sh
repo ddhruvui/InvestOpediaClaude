@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# [ONE-OFF from the initial overnight build — runs stages LOCALLY, predating
+# the RunPod-first rule. The daily loop is scripts/daily.sh.]
 # Finalization chain: wait for local stage3 -> predict refresh -> final report.
 # Prints a status line every 10 min; on any step failure prints the log tail
 # and stops so the failure is visible and fixable.
