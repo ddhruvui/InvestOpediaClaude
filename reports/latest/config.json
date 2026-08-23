@@ -1,0 +1,32 @@
+{
+ "config_hash": "b7a0c873d3f4df19bf5d7f5b6fc10a56c81f9f38cadbff16902353ff345cec7f",
+ "cost": {
+  "per_trade_bps": 15,
+  "borrow_gc_bps_yr": 50,
+  "slippage_bps": 0
+ },
+ "barrier": {
+  "m": 1.5,
+  "h_days": 20,
+  "tie_break": "stop_first"
+ },
+ "port": {
+  "single_name_cap": 0.03,
+  "vol_target_ann": 0.12,
+  "tranches": 15
+ },
+ "pdt": {
+  "limit": 3,
+  "window_business_days": 5,
+  "equity_floor": 25000
+ },
+ "ops": {
+  "max_daily_loss_pct": 0.02
+ },
+ "slippage_adoption_min_fills": 60,
+ "decay": {
+  "window_sessions": 63,
+  "breach_sessions": 126,
+  "ratio_of_backtest": 0.5
+ }
+}

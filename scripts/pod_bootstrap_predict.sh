@@ -34,6 +34,8 @@ else
     export EOD_DIR="${EOD_DIR:-/workspace/data}"
     export MARKET_DIR="${MARKET_DIR:-/workspace/m1x}"
     export OUT_DIR="${OUT_DIR:-/workspace/derived/${JOB:-stage1}}"
+    # G-09: one ledger for ALL runs — a per-pod ledger would undercount DSR's N
+    export LEDGER_PATH="${LEDGER_PATH:-/workspace/ledger/trials.parquet}"
     mkdir -p "$OUT_DIR"
 
     case "${JOB:-stage1}" in
@@ -45,7 +47,7 @@ else
                  --out "$OUT_DIR" ${USE_MARKET:+--market "$MARKET_DIR"} ;;
       stage3)  timeout 28800 python -m src.pipeline.stage3 --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" --scores "${SCORES_DIR:-/workspace/derived/stage2}" \
-                 ${USE_MARKET:+--market "$MARKET_DIR"} ;;
+                 ${USE_MARKET:+--market "$MARKET_DIR"} ${NO_CPCV:+--no-cpcv} ;;
       predict) timeout 14400 python -m src.pipeline.predict --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" ${USE_MARKET:+--market "$MARKET_DIR"} ;;
       *) echo "unknown JOB '$JOB'" ;;

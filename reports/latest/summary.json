@@ -1,0 +1,253 @@
+{
+ "generated_utc": "2026-08-23T16:33:52+00:00",
+ "stamp": {
+  "config_hash": "b7a0c873d3f4df19bf5d7f5b6fc10a56c81f9f38cadbff16902353ff345cec7f",
+  "data_snapshot_id": "b4761a0b44bbb4c7",
+  "git_sha": "unknown",
+  "seed": 20260717
+ },
+ "universe": {
+  "names": 3168,
+  "avg_daily": 805.53052694
+ },
+ "gates": {
+  "verdict": "ITERATE",
+  "checks": [
+   {
+    "id": "G-11 kill: Rank IC",
+    "value": 0.02985648,
+    "threshold": 0.02,
+    "op": ">=",
+    "pass": true,
+    "note": "net-of-cost walk-forward Rank IC"
+   },
+   {
+    "id": "G-11 kill: net Sharpe",
+    "value": 0.55568006,
+    "threshold": 0.5,
+    "op": ">=",
+    "pass": true,
+    "note": "below this, do not trade"
+   },
+   {
+    "id": "G-11 advance: net Sharpe",
+    "value": 0.55568006,
+    "threshold": 0.8,
+    "op": ">=",
+    "pass": false,
+    "note": "paper-trading bar"
+   },
+   {
+    "id": "G-11 advance: max drawdown",
+    "value": -0.32686767,
+    "threshold": -0.15,
+    "op": ">",
+    "pass": false,
+    "note": "across CPCV paths"
+   },
+   {
+    "id": "G-08 beat SPY buy-and-hold",
+    "value": 0.55568006,
+    "threshold": 0.6236376,
+    "op": ">",
+    "pass": false,
+    "note": "free baseline"
+   },
+   {
+    "id": "G-08 beat 12-1 momentum",
+    "value": 0.55568006,
+    "threshold": 0.12269442,
+    "op": ">",
+    "pass": true,
+    "note": "free baseline"
+   }
+  ]
+ },
+ "book": {
+  "engine": "event (M5.2 barrier exits, regime + vol targeting)",
+  "sharpe_net": 0.55568006,
+  "mdd": -0.32686767,
+  "n_trades": 376346,
+  "avg_hold_sessions": 17.25635452,
+  "exit_mix": {
+   "vertical": 259518,
+   "upper": 64808,
+   "lower": 51503,
+   "censored": 517
+  },
+  "ann_return": 0.06082313,
+  "ann_vol": 0.10945711,
+  "meta_gate": {
+   "adopted": false,
+   "sharpe": 0.0732665,
+   "n_trades": 117397,
+   "mdd": -0.46419741,
+   "turnover_cut": 0.68806099,
+   "rule": "M11-02: ships only if turnover falls materially at equal-or-better net Sharpe"
+  },
+  "dsr": {
+   "DSR": 0.99746485,
+   "SR_daily": 0.03500455,
+   "SR_star": 0.0,
+   "T": 6572,
+   "N": 18,
+   "skew": -0.64784416,
+   "kurtosis_raw": 9.00546303,
+   "caveat": "N counts the trials ledger visible to the run that produced this book. A ledger that does not persist across runs undercounts N and under-deflates the Sharpe (G-09)."
+  }
+ },
+ "fast_path": {
+  "sharpe_net": -0.26846729,
+  "mdd": -0.5591224,
+  "turnover_month": 0.73352769,
+  "note": "Stage-1 fixed 15-tranche rotation (no barrier exits)"
+ },
+ "ic": {
+  "IC": 0.02410229,
+  "ICIR": 0.20577034,
+  "RankIC": 0.02985648,
+  "RankICIR": 0.24967394,
+  "n_days": 4788
+ },
+ "members": [
+  {
+   "name": "lgbm_h20",
+   "IC": 0.01900787,
+   "RankIC": 0.02601853,
+   "ICIR": 0.1863577,
+   "RankICIR": 0.24665954
+  },
+  {
+   "name": "lgbm_h60",
+   "IC": 0.020157,
+   "RankIC": 0.02355655,
+   "ICIR": 0.1877085,
+   "RankICIR": 0.20532613
+  },
+  {
+   "name": "lgbm_h5",
+   "IC": 0.01835286,
+   "RankIC": 0.02286961,
+   "ICIR": 0.15336552,
+   "RankICIR": 0.18528896
+  },
+  {
+   "name": "gru_h60",
+   "IC": 0.0168302,
+   "RankIC": 0.02171663,
+   "ICIR": 0.14413545,
+   "RankICIR": 0.18424204
+  },
+  {
+   "name": "gru_h20",
+   "IC": 0.02027917,
+   "RankIC": 0.01934015,
+   "ICIR": 0.18351967,
+   "RankICIR": 0.17067653
+  },
+  {
+   "name": "gru_h5",
+   "IC": 0.01697955,
+   "RankIC": 0.01799231,
+   "ICIR": 0.13186145,
+   "RankICIR": 0.13239561
+  },
+  {
+   "name": "cnn_I5R20",
+   "IC": 0.00174237,
+   "RankIC": 0.00258606,
+   "ICIR": 0.02869063,
+   "RankICIR": 0.03935842
+  }
+ ],
+ "member_admission_floor": 0.02,
+ "baselines": {
+  "spy_bh": {
+   "sharpe_net": 0.6236376,
+   "ann_return": 0.11948286,
+   "ann_vol": 0.19159022,
+   "mdd": -0.55422595,
+   "n_days": 4787
+  },
+  "mom_12_1": {
+   "sharpe_net": 0.12269442,
+   "ann_return": 0.03532851,
+   "ann_vol": 0.28793904,
+   "mdd": -0.78770254,
+   "n_days": 4787
+  },
+  "alpha_beta_vs_spy": {
+   "alpha_ann": -0.0329735,
+   "beta": 0.05709892
+  },
+  "alpha_beta_vs_mom": {
+   "alpha_ann": -0.02493301,
+   "beta": -0.03448081
+  }
+ },
+ "sensitivity": {
+  "5": {
+   "sharpe_net": 0.09380057,
+   "ann_return": 0.00913861,
+   "ann_vol": 0.09742594,
+   "mdd": -0.32460201,
+   "n_days": 4787
+  },
+  "15": {
+   "sharpe_net": -0.26846729,
+   "ann_return": -0.02615116,
+   "ann_vol": 0.09740912,
+   "mdd": -0.5591224,
+   "n_days": 4787
+  },
+  "30": {
+   "sharpe_net": -0.81239452,
+   "ann_return": -0.07911652,
+   "ann_vol": 0.09738683,
+   "mdd": -0.81968182,
+   "n_days": 4787
+  }
+ },
+ "cpcv": {
+  "paths": [
+   {
+    "path": 0,
+    "sharpe": 1.02911892,
+    "mdd": -0.47866543,
+    "n_trades": 537347
+   },
+   {
+    "path": 1,
+    "sharpe": 1.24493256,
+    "mdd": -0.31313351,
+    "n_trades": 529476
+   },
+   {
+    "path": 2,
+    "sharpe": 0.76648292,
+    "mdd": -0.61170276,
+    "n_trades": 533573
+   },
+   {
+    "path": 3,
+    "sharpe": 1.16104016,
+    "mdd": -0.31215822,
+    "n_trades": 534812
+   },
+   {
+    "path": 4,
+    "sharpe": 1.25222528,
+    "mdd": -0.29550211,
+    "n_trades": 532227
+   }
+  ],
+  "sharpe_median": 1.16104016,
+  "mdd_worst": -0.61170276
+ },
+ "ensemble_vs_best_single": {
+  "ensemble_rank_ic": 0.02985648,
+  "best_single_rank_ic": 0.02601853,
+  "ensemble_geq_best": true
+ },
+ "caveat": "Research output evaluated under blueprint v1.0.1 gates. Not financial advice."
+}

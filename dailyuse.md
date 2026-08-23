@@ -256,3 +256,27 @@ scripts/watch_jobs.sh stage3 predict   # 10-min watchdog: status, failure tails,
 - Tape hygiene for the whole-market panel (bar sanity, vintage seams, V-spikes,
   level flips, tape breaks) is applied inside `build_panel()` — see
   `src/data/panel.py` and the memory note `eod-bulk-tape-hygiene`.
+
+## Research console (reports + paper trading)
+
+Final reports live in **`reports/`** — `RUN_REPORT.md` and `suggestions_latest.md`
+are the human-readable finals, `reports/latest/*.json` is the machine bundle the
+app serves, `reports/raw/` keeps the pod stage-reports for provenance.
+
+```sh
+# refresh the bundle after a pipeline run (pods write to the volume; this only reads)
+aws s3 cp $S3FLAGS s3://$RUNPOD_VOLUME_ID/derived/stage3/ derived/ --recursive
+aws s3 cp $S3FLAGS s3://$RUNPOD_VOLUME_ID/derived/predict/suggestions.json derived/
+python3 tools/build_reports.py --src derived --out reports/latest
+
+# serve it
+cd app/backend && npm install && npm start      # http://localhost:8787 (API + built UI)
+cd app/frontend && npm run dev                  # hot-reload UI on :5173, proxies /api
+cd app/backend && npm test                      # paper-book regression suite
+```
+
+Four pages: **Dashboard** (G-11 verdict, gate table, equity curve, member Rank ICs,
+CPCV spread, baselines), **Suggestions** (target book + barrier levels, push to
+paper), **Backtest** (what was suggested vs what happened across 376k barrier
+trades), **Paper trading** (BP15: record fills to measure open-print slippage,
+PDT budget, kill switch, decay monitor). See [app/README.md](app/README.md).

@@ -50,7 +50,9 @@ ENV_COMMON=$(cat <<JSON
     "KEEP_POD": "${KEEP_POD:-}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
     "OUT_DIR": "/workspace/derived/${JOB}",
-    "SCORES_DIR": "${SCORES_DIR:-/workspace/derived/stage2}"
+    "SCORES_DIR": "${SCORES_DIR:-/workspace/derived/stage2}",
+    "NO_CPCV": "${NO_CPCV:-}",
+    "LEDGER_PATH": "/workspace/ledger/trials.parquet"
 JSON
 )
 

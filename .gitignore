@@ -25,3 +25,10 @@ scratch*/
 *.log
 # reports stay tracked (small, reviewable): artifacts/reports/
 # ledger/trials.parquet stays tracked (G-09 append-only audit trail)
+
+# --- app ---
+node_modules/
+app/*/dist/
+app/backend/data/          # paper-book runtime state
+# reports/ IS tracked: reports/latest is the app's data bundle, reports/raw the
+# pod-report provenance, reports/*.md the human-readable finals

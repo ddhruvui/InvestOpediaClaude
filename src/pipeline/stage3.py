@@ -231,6 +231,25 @@ def run_stage3(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
               "book": perf_summary(book["daily_net"])}
     (out / "stage3_report.json").write_text(json.dumps(report, indent=2, default=str))
     book["daily_net"].to_frame("net").to_parquet(out / "stage3_daily_net.parquet")
+
+    # ---- suggested -> outcome ledger (what the book proposed and what happened) ----
+    # Every barrier trade with the conviction that produced it, so the reporting
+    # layer can answer "did the strongest suggestions actually work out?".
+    for tag, res in (("ungated", res_ungated), ("gated", res_gated)):
+        tr = res["trades"]
+        if tr is None or not len(tr):
+            continue
+        tr = tr.copy()
+        idx = list(zip(tr["entry_date"], tr["ticker"]))
+        er = ens.stack(future_stack=True)
+        tr["ensemble_rank"] = er.reindex(idx).to_numpy()
+        if meta_mult is not None:
+            mm = meta_mult.stack(future_stack=True)
+            tr["meta_mult"] = mm.reindex(idx).to_numpy()
+        tr["regime_mult"] = gm.reindex(tr["entry_date"]).to_numpy()
+        tr.to_parquet(out / f"stage3_trades_{tag}.parquet", index=False)
+        print(f"trades[{tag}]: {len(tr):,} rows -> stage3_trades_{tag}.parquet", flush=True)
+    book["equity"].to_frame("equity").to_parquet(out / "stage3_equity.parquet")
     print(json.dumps({"adoption": adoption["adopt"], "cpcv": cpcv_report,
                       "dsr": dsr.get("DSR")}, indent=2, default=str), flush=True)
     return report
