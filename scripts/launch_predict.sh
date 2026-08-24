@@ -52,7 +52,7 @@ ENV_COMMON=$(cat <<JSON
     "OUT_DIR": "${OUT_DIR:-/workspace/derived/${JOB}}",
     "SCORES_DIR": "${SCORES_DIR:-/workspace/derived/stage2}",
     "NO_CPCV": "${NO_CPCV:-}",
-    "LEDGER_PATH": "/workspace/ledger/trials.parquet",
+    "LEDGER_PATH": "${LEDGER_PATH:-/workspace/ledger/trials.parquet}",
     "MODEL_DIR": "${MODEL_DIR:-/workspace/models}",
     "REFIT": "${REFIT:-auto}",
     "SCORES_DIR_ALT": "${SCORES_DIR_ALT:-/workspace/derived/stage1}",
