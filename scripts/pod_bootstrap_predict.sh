@@ -46,7 +46,7 @@ else
       market)  timeout 28800 python src/data/build_market.py ;;
       stage1)  timeout 28800 python -m src.pipeline.stage1 --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" ${USE_MARKET:+--market "$MARKET_DIR"} ;;
-      stage2)  timeout 43200 python -m src.pipeline.stage2 --m1 "$M1_DIR" --eod "$EOD_DIR" \
+      stage2)  timeout 64800 python -m src.pipeline.stage2 --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" ${USE_MARKET:+--market "$MARKET_DIR"} ;;
       stage3)  timeout 28800 python -m src.pipeline.stage3 --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" --scores "${SCORES_DIR:-/workspace/derived/stage2}" \
