@@ -24,14 +24,19 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                        meta_mult: pd.DataFrame | None = None,
                        account_equity: float | None = None,
                        day_budget_mult: pd.Series | None = None,
-                       nav0: float = 1.0) -> dict:
+                       nav0: float = 1.0, m: float | None = None,
+                       h: int | None = None,
+                       thr_cap: float | None = None) -> dict:
     """selection: wide bool frame (decision date x ticker) of names entering that
     day's tranche. Returns {'daily_net', 'equity', 'trades', 'pdt_log', ...}."""
     dates = panel.adj_open.index
     O = panel.adj_open
     tranches = int(cfg.port.tranches)
     cap = float(cfg.port.single_name_cap)
-    m_b, h_b = float(cfg.barrier.m), int(cfg.barrier.h_days)
+    m_b = float(cfg.barrier.m) if m is None else float(m)
+    h_b = int(cfg.barrier.h_days) if h is None else int(h)
+    if thr_cap is None:
+        thr_cap = cfg.barrier.get("thr_cap_pct")
 
     # 1) entries per decision day with inverse-vol weights inside the tranche
     entries = []
@@ -63,7 +68,8 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
     # 2) exits via the ONE barrier engine (C-06)
     ex = barrier_exits(edf[["date", "ticker", "side"]], panel.adj_open, panel.adj_high,
                        panel.adj_low, panel.adj_close, sigma32, cost_model,
-                       m=m_b, h=h_b, tie_break=str(cfg.barrier.tie_break))
+                       m=m_b, h=h_b, tie_break=str(cfg.barrier.tie_break),
+                       thr_cap=thr_cap)
     ex["tranche_w"] = edf["tranche_w"].to_numpy()
     ex = ex[ex["barrier_hit"].isin(["upper", "lower", "vertical", "censored"])]
 

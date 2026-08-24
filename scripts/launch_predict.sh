@@ -12,8 +12,8 @@
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 JOB="${1:-stage1}"
-case "$JOB" in test|market|stage1|stage2|stage3|predict) ;; *)
-  echo "unknown job '$JOB' (test|market|stage1|stage2|stage3|predict)" >&2; exit 2 ;; esac
+case "$JOB" in test|market|stage1|stage2|stage3|predict|exp) ;; *)
+  echo "unknown job '$JOB' (test|market|stage1|stage2|stage3|predict|exp)" >&2; exit 2 ;; esac
 : "${RUNPOD_API_KEY:?set in data_acquisition/runpod/.env}"
 
 DC="${RUNPOD_DATACENTER:-EU-RO-1}"
@@ -49,12 +49,14 @@ ENV_COMMON=$(cat <<JSON
     "USE_MARKET": "${USE_MARKET:-1}",
     "KEEP_POD": "${KEEP_POD:-}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
-    "OUT_DIR": "/workspace/derived/${JOB}",
+    "OUT_DIR": "${OUT_DIR:-/workspace/derived/${JOB}}",
     "SCORES_DIR": "${SCORES_DIR:-/workspace/derived/stage2}",
     "NO_CPCV": "${NO_CPCV:-}",
     "LEDGER_PATH": "/workspace/ledger/trials.parquet",
     "MODEL_DIR": "${MODEL_DIR:-/workspace/models}",
-    "REFIT": "${REFIT:-auto}"
+    "REFIT": "${REFIT:-auto}",
+    "SCORES_DIR_ALT": "${SCORES_DIR_ALT:-/workspace/derived/stage1}",
+    "VARIANTS_B64": "${VARIANTS_B64:-}"
 JSON
 )
 

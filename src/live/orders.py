@@ -37,6 +37,7 @@ def generate_orders(target_weights: pd.Series, current_shares: pd.Series,
                     cfg, pdt: PDTCounter | None = None,
                     as_of=None) -> list[Order]:
     m, h = float(cfg.barrier.m), int(cfg.barrier.h_days)
+    cap = cfg.barrier.get("thr_cap_pct")
     orders: list[Order] = []
     for t, w in target_weights.items():
         px = raw_close.get(t, np.nan)
@@ -51,6 +52,8 @@ def generate_orders(target_weights: pd.Series, current_shares: pd.Series,
                             note=f"target_w={w:.4f}"))
         if cur_sh == 0 and d > 0:            # new entry: attach barrier orders (§G)
             thr = m * float(sigma32.get(t, np.nan)) * np.sqrt(h)
+            if cap is not None:
+                thr = min(thr, float(cap))
             if np.isfinite(thr):
                 orders.append(Order(t, "SELL", abs(d), "STP", "GTC",
                                     stop_price=round(px * (1 - thr), 2),

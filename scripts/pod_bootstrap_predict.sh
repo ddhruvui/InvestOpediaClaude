@@ -51,6 +51,11 @@ else
       stage3)  timeout 28800 python -m src.pipeline.stage3 --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" --scores "${SCORES_DIR:-/workspace/derived/stage2}" \
                  ${USE_MARKET:+--market "$MARKET_DIR"} ${NO_CPCV:+--no-cpcv} ;;
+      exp)     timeout 28800 python -m src.pipeline.experiments --m1 "$M1_DIR" \
+                 --eod "$EOD_DIR" --out "$OUT_DIR" \
+                 --scores "${SCORES_DIR:-/workspace/derived/stage2}" \
+                 --scores-alt "${SCORES_DIR_ALT:-/workspace/derived/stage1}" \
+                 ${USE_MARKET:+--market "$MARKET_DIR"} ;;
       predict) timeout 14400 python -m src.pipeline.predict --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" ${USE_MARKET:+--market "$MARKET_DIR"} ;;
       *) echo "unknown JOB '$JOB'" ;;

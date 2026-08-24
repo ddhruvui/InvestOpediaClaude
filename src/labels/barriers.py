@@ -25,7 +25,8 @@ from src.backtest.costs import CostModel
 def barrier_exits(entries: pd.DataFrame, adj_open: pd.DataFrame, adj_high: pd.DataFrame,
                   adj_low: pd.DataFrame, adj_close: pd.DataFrame, sigma32: pd.DataFrame,
                   cost_model: CostModel, m: float = 1.5, h: int = 20,
-                  tie_break: str = "stop_first") -> pd.DataFrame:
+                  tie_break: str = "stop_first",
+                  thr_cap: float | None = None) -> pd.DataFrame:
     """entries: DataFrame with columns (date, ticker, side). Returns one row per entry:
     entry_date, ticker, side, fill_date, entry_price, exit_date, exit_price,
     barrier_hit in {upper, lower, vertical, censored, no_fill}, label,
@@ -54,6 +55,9 @@ def barrier_exits(entries: pd.DataFrame, adj_open: pd.DataFrame, adj_high: pd.Da
             out.append(rec)
             continue
         thr = m * sig * np.sqrt(h)
+        if thr_cap is not None:
+            thr = min(thr, thr_cap)   # [IMPL] width cap: high-vol names otherwise
+                                      # price barriers they can never touch
         upper, lower = P0 * (1 + thr), P0 * (1 - thr)
         pt_level, stop_level = (upper, lower) if side > 0 else (lower, upper)
         rec.update(fill_date=dates[i0], entry_price=P0)

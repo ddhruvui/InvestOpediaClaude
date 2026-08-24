@@ -228,6 +228,9 @@ def run_predict(m1_dir: str, eod_dir: str, out_dir: str, config_path: str | None
     # ---- barrier levels for entries (M5.2 parameters, priced off last close) ----
     m_bar, h_bar = float(cfg.barrier.m), int(cfg.barrier.h_days)
     thr = m_bar * sigma32.loc[t_last] * np.sqrt(h_bar)
+    cap = cfg.barrier.get("thr_cap_pct")
+    if cap is not None:
+        thr = thr.clip(upper=float(cap))
     last_close = panel.raw_close.loc[t_last]
     ens_last = ens.loc[t_last]
 

@@ -19,7 +19,7 @@ from src.primitives.index import index_block
 def prepare(cfg, m1_dir: str, eod_dir: str, market_dir: str | None = None,
             max_tickers: int | None = None, with_sentiment: bool = False,
             finbert_dir: str | None = None, sent_cache: str | None = None,
-            since: pd.Timestamp | None = None) -> dict:
+            since: pd.Timestamp | None = None, features: bool = True) -> dict:
     """since: restrict the panel to sessions >= since (continual-learning tail).
     Features with the longest lookback (mom_12_1, 273 sessions) are exact from
     ~14 months past `since`; callers must size `since` so every date they train,
@@ -74,6 +74,10 @@ def prepare(cfg, m1_dir: str, eod_dir: str, market_dir: str | None = None,
     spy = load_spy(eod_dir).reindex(panel.dates)
     idx_blk = index_block(spy["adj_close"], r, beta_window=int(cfg.port.hedge_beta_window))
 
+    if not features:      # light mode: backtest-only callers (experiments) skip
+        return {"m1": m1, "sessions": sessions, "panel": panel, "mask": mask,
+                "health": health, "r": r, "sigma32": sigma32, "spy": spy,
+                "idx_blk": idx_blk}
     feats, manifest = build_features(
         panel, mask, fundamentals=m1.fundamentals_pit(), surprises=m1.earnings_surprises(),
         estimates=m1.estimates_pit(), sessions=sessions)
