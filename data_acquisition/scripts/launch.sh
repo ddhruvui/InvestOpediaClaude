@@ -146,7 +146,9 @@ launch_vendor() {
   aws s3 cp $S3FLAGS "$ROOT/src/bootstrap.sh"       "$BUCKET/code/bootstrap.sh"
   aws s3 cp $S3FLAGS "$ROOT/config/$CONFIG_FILE"    "$BUCKET/code/$CONFIG_FILE"
 
-  local PAYLOAD RESP CODE BODY POD_ID
+  # post.py's manifest gate: "fresh" = ended_at newer than this launch (see post.py docstring)
+  local PAYLOAD RESP CODE BODY POD_ID LAUNCHED_AT
+  LAUNCHED_AT=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
   PAYLOAD=$(cat <<JSON
 {
   "name": "investopediaclaude-${VENDOR}",
@@ -167,7 +169,8 @@ launch_vendor() {
     "CONFIG_PATH": "/workspace/code/${CONFIG_FILE}",
     "DATA_DIR": "/workspace/${DATA_SUBDIR}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
-    "STORE_LOGS": "${STORE_LOGS}"
+    "STORE_LOGS": "${STORE_LOGS}",
+    "POST_LAUNCHED_AT": "${LAUNCHED_AT}"
   }
 }
 JSON

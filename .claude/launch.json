@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "investopedia-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--prefix", "app/backend"],
+      "port": 8787
+    }
+  ]
+}

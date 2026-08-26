@@ -19,8 +19,12 @@ needs, stores them on a persistent RunPod network volume as JSON, and mirrors th
   **This is what a model reads.** It is also where every consumption rule is enforced rather than
   documented — session grid, raw-close provenance, quarantine, vintages, permaticker, split-vs-spinoff.
 - `scripts/launch.sh post` → **the closing stage, and the one that keeps models in step with the
-  data.** Waits for today's vendor manifests, then runs `validate` and `build_m1` in order in one
-  pod. Fire it at the same time as `all` — it self-sequences.
+  data.** Waits for vendor manifests NEWER THAN ITS OWN LAUNCH (stamped via `POST_LAUNCHED_AT`;
+  fetchers fire moments earlier, so a newer manifest proves a same-batch fetch completed), then
+  runs `validate` and `build_m1` in order in one pod. Fire it at the same time as `all` — it
+  self-sequences. (The old today's-UTC-date gate failed both ways around midnight UTC — a prior
+  run ending after 00:00 UTC pre-satisfied the next evening's gate so m1 built on the prior close,
+  and a post launched after 00:00 UTC waited out its whole timeout. Observed 2026-08-24/25.)
 
       scripts/launch.sh all && scripts/launch.sh post
 
@@ -78,8 +82,10 @@ One-time: `cp data_acquisition/runpod/.env.example data_acquisition/runpod/.env`
 ```sh
 # 1. Fetch: upload the vendor's fetcher+config, launch a CPU pod per vendor that downloads to the
 #    volume, then self-terminates. Fire-and-forget.
-#    DAILY: run `all` AFTER ~21:00 UTC (17:00 ET) — EODHD's bulk day-file must not be pulled
-#    mid-session or a partial file can be frozen (the fetcher skips existing day-files forever).
+#    DAILY: run `all` at ~22:00 UTC (18:00 ET). Not earlier than 21:00 UTC — the bulk day-file
+#    must not be pulled mid-session (a partial file would be frozen; the fetcher skips existing
+#    day-files forever), and EODHD only publishes it ~23:30 UTC (the fetch reaches the bulk job
+#    ~80 min in). Finish before 00:00 UTC so manifests stay on the same UTC day.
 data_acquisition/scripts/launch.sh all        # DAILY ROUTINE: EODHD + Sharadar + Tiingo (one pod
                                               # each; already-running vendors are skipped, not doubled)
 data_acquisition/scripts/launch.sh            # EODHD only (default)
@@ -268,7 +274,8 @@ persist on the volume under `/workspace/models/` (`MODEL_DIR`), and each daily r
 `REFIT=full scripts/launch_predict.sh predict` forces a from-scratch fit (also automatic
 after any `configs/system.yaml` change, feature-set change, or on the 21-session cadence).
 
-**The whole loop is one command: `scripts/daily.sh`** (evenings after ~21:00 UTC). It
+**The whole loop is one command: `scripts/daily.sh`** (start ~22:00 UTC / 18:00 ET; EODHD's
+bulk day-file lands ~23:30 UTC and the fetch should finish before midnight UTC). It
 sequences fetch → post (waits for the pod AND verifies m1 was rebuilt *today*) →
 market → predict (each watched to completion via `watch_jobs.sh`, one auto-relaunch)
 → mirrors `suggestions.json`/`.md` + stage reports off the volume → rebuilds

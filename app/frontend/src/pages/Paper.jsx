@@ -86,7 +86,7 @@ export default function Paper() {
   const eqSeries = st.realized.equity.length > 1 ? [{
     name: 'Paper book (realized)',
     color: 'var(--series-1)',
-    points: st.realized.equity.map((p) => ({ x: p.date, y: p.equity })),
+    points: st.realized.equity.map((p) => ({ x: p.date, y: p.equity - 1 })),
   }] : null;
 
   return (
@@ -173,8 +173,9 @@ export default function Paper() {
 
       {eqSeries && (
         <Card title="Realized paper equity"
-              subtitle="Growth of 1 on closed trades only — a paper book has no intraday marks, so realized P&L is the honest series to judge decay on.">
-          <LineChart series={eqSeries} height={230} yFormat={(v) => `${fmtNum(v, 3)}×`} />
+              subtitle="% change since start on closed trades only — a paper book has no intraday marks, so realized P&L is the honest series to judge decay on.">
+          <LineChart series={eqSeries} height={230} zeroLine
+                     yFormat={(v) => fmtSignedPct(v, 2)} />
         </Card>
       )}
 

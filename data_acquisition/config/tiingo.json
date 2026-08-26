@@ -14,7 +14,7 @@
   "market": [
     "SPY"
   ],
-  "_stocks_comment": "Universe refreshed 2026-08-21 to match S&P 500 turnover (see config/sharadar.json _stocks_comment for the event detail): added FERG, RDDT, VMRK; kept delisted/renamed AVB, EA, EQR for late restatements. SYMBOL SPLIT: VMRK is the exchange/EODHD/Tiingo symbol for the renamed EQR; Sharadar alone calls it VRMK (sharadar.json differs on purpose). The list does not self-update.",
+  "_stocks_comment": "Universe refreshed 2026-08-26 to match S&P 500 turnover (see config/sharadar.json _stocks_comment for the event detail): added FERG, RDDT, VMRK; kept delisted/renamed AVB, EA, EQR for late restatements. All three vendors now use VMRK for the renamed EQR (Sharadar briefly used VRMK, corrected on their side by 2026-08-25). The list does not self-update.",
   "stocks": [
     "A",
     "AAPL",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { LineChart, BarChart, fmtNum, fmtPct, fmtInt } from '../components/Chart.jsx';
+import { LineChart, BarChart, fmtNum, fmtPct, fmtInt, fmtSignedPct } from '../components/Chart.jsx';
 import { Card, StatTile, Badge, Delta, Loading, ErrorBox } from '../components/Bits.jsx';
 
 const VERDICT = {
@@ -42,10 +42,14 @@ export default function Dashboard() {
   const bl = summary.baselines || {};
   const [tone, mark, title, blurb] = VERDICT[g.verdict] || VERDICT.ITERATE;
 
+  const eqYears = equity
+    && (new Date(equity.end) - new Date(equity.start)) / (365.25 * 86400e3);
+  const cagr = equity && eqYears > 0 ? equity.final_equity ** (1 / eqYears) - 1 : null;
+
   const equitySeries = equity && [{
     name: 'Deployed book (barrier exits)',
     color: 'var(--series-1)',
-    points: equity.series.map((p) => ({ x: p.date.slice(0, 7), y: p.equity })),
+    points: equity.series.map((p) => ({ x: p.date.slice(0, 7), y: p.equity - 1 })),
   }];
 
   const memberBars = (summary.members || [])
@@ -83,6 +87,9 @@ export default function Dashboard() {
         <StatTile label="Annual return" value={fmtPct(book.ann_return)}
                   sub={`vol ${fmtPct(book.ann_vol)}`}
                   tone={book.ann_return == null ? '' : book.ann_return >= 0 ? 'pos' : 'neg'} />
+        <StatTile label="Avg annual return" value={fmtSignedPct(cagr, 1)}
+                  sub={eqYears ? `compound, over ${fmtNum(eqYears, 1)} years` : ''}
+                  tone={cagr == null ? '' : cagr >= 0 ? 'pos' : 'neg'} />
         <StatTile label="Ensemble Rank IC" value={fmtNum(summary.ic?.RankIC, 4)}
                   sub={`floor 0.02 · ICIR ${fmtNum(summary.ic?.RankICIR, 2)}`}
                   tone={summary.ic?.RankIC == null ? '' : summary.ic.RankIC >= 0.02 ? 'pos' : 'neg'} />
@@ -93,10 +100,12 @@ export default function Dashboard() {
       </div>
 
       {equitySeries && (
-        <Card title="Growth of 1 — deployed book"
+        <Card title="Change since start — deployed book"
               subtitle={`${equity.start} to ${equity.end}, net of costs, open-to-open. `
-                + `Final ${fmtNum(equity.final_equity, 2)}× · worst drawdown ${fmtPct(equity.max_drawdown)}.`}>
-          <LineChart series={equitySeries} height={280} yFormat={(v) => `${fmtNum(v, 2)}×`} />
+                + `Final ${fmtSignedPct(equity.final_equity - 1, 1)} · avg ${fmtSignedPct(cagr, 1)}/yr `
+                + `· worst drawdown ${fmtPct(equity.max_drawdown)}.`}>
+          <LineChart series={equitySeries} height={280} zeroLine
+                     yFormat={(v) => fmtSignedPct(v, 1)} />
         </Card>
       )}
 

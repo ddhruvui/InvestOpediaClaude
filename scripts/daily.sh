@@ -11,7 +11,9 @@
 # Everything is incremental on a warm volume, so a normal evening run is short.
 # Safe to re-run: every launcher skips a stage whose pod is already up.
 #
-#   scripts/daily.sh                    # evenings after ~21:00 UTC (17:00 ET)
+#   scripts/daily.sh                    # start ~22:00 UTC (18:00 ET); EODHD's bulk
+#                                       # day-file lands ~23:30 UTC, and the fetch
+#                                       # should finish before 00:00 UTC
 #   SKIP_FETCH=1 scripts/daily.sh       # data already fetched today
 #   REFIT=full scripts/daily.sh         # force from-scratch model refit
 #   FULL_MIRROR=1 scripts/daily.sh      # re-pull stage parquets (after stage3 rerun)
@@ -75,6 +77,20 @@ mkdir -p derived
 mirror() { aws s3 cp $S3FLAGS "$BUCKET/$1" "$2" >/dev/null 2>&1; }
 mirror derived/predict/suggestions.json derived/suggestions.json \
   || { say "FATAL: no suggestions.json on the volume"; exit 1; }
+# G-02 sanity: suggestions must be scored off the newest day-file on the volume.
+# 2026-08-24 failure mode: EODHD publishes the BULK day-file ~19:30 ET, so a chain
+# that builds m1 before the fetch finishes silently scores the PRIOR close.
+AS_OF=$(python3 -c "import json; print(json.load(open('derived/suggestions.json'))['as_of_close'])")
+LATEST_BULK=$({ aws s3 ls $S3FLAGS "$BUCKET/data/eod_bulk/US/" | awk '{print $4}' \
+  | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.json$' | sort | tail -1; } || true)
+LATEST_BULK="${LATEST_BULK%.json}"
+if [ -n "$LATEST_BULK" ] && [ "$AS_OF" != "$LATEST_BULK" ]; then
+  say "FATAL: suggestions as_of_close=$AS_OF but newest eod_bulk day-file is $LATEST_BULK —"
+  say "  the m1/market/predict chain ran before today's data landed; re-run post, market, predict"
+  exit 1
+fi
+say "verified: as_of_close=$AS_OF matches newest day-file"
+[ "$LATEST_BULK" = "$(date -u +%F)" ] || say "WARN: newest day-file $LATEST_BULK is not today's UTC date (holiday/weekend, or EODHD bulk not yet published when the fetch ran)"
 mirror derived/predict/suggestions.md reports/suggestions_latest.md || true
 mirror m1/sessions.parquet derived/sessions.parquet || true
 # stage reports are tiny JSON — refresh daily; they only change when stages rerun

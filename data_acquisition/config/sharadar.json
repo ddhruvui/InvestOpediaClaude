@@ -27,7 +27,7 @@
     "ACTIONS",
     "SF1"
   ],
-  "_stocks_comment": "Refreshed 2026-08-21 against the SP500 table's 'current' rows: added FERG (replaced EA 2026-08-05), RDDT (replaced AVB 2026-08-18), and VRMK (EQR renamed 2026-08-18 after acquiring AVB \u2014 same permaticker, post-rename bars file under the new symbol). SYMBOL SPLIT: the exchange/EODHD/Tiingo symbol is VMRK, but Sharadar files the company as VRMK \u2014 this list must say VRMK or Sharadar returns 0 rows and the missing file forces a cold pull every night. AVB/EA/EQR are kept so their files still pick up late restatements. This list does NOT self-update \u2014 when the index turns over, diff it against the SP500 table's latest 'current' snapshot.",
+  "_stocks_comment": "Refreshed 2026-08-26 against the SP500 table's 'current' rows: FERG replaced EA (2026-08-05), RDDT replaced AVB (2026-08-18), VMRK is EQR renamed (2026-08-18, after acquiring AVB \u2014 same permaticker). Sharadar briefly filed the renamed company as VRMK (Aug 18-21) before re-keying to the exchange symbol VMRK; SEP/VRMK.json on the volume is a frozen artifact of that window, superseded by VMRK.json. AVB/EA/EQR are kept so their files still pick up late restatements. This list does NOT self-update \u2014 when the index turns over, diff it against the SP500 table's latest 'current' snapshot.",
   "stocks": [
     "A",
     "AAPL",
@@ -501,7 +501,7 @@
     "VLO",
     "VLTO",
     "VMC",
-    "VRMK",
+    "VMRK",
     "VRSK",
     "VRSN",
     "VRT",
