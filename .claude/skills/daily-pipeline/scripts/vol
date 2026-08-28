@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# aws s3 against the RunPod network volume, with endpoint/region already set.
+#   vol ls data/eod_bulk/US/
+#   vol cp data/_run.json /tmp/run.json --quiet
+#
+# Path rule, deliberately unambiguous rather than clever: an argument is treated as a
+# VOLUME path only if it is a bare relative path. Anything starting with '/', '.', '-'
+# or 's3://' is passed straight through. An earlier version guessed by "does this look
+# like a file and does it exist", which silently bucket-prefixed cp DESTINATIONS (they
+# never exist yet) and broke every download.
+set -euo pipefail
+. "$(dirname "$0")/_env.sh"
+SUB="$1"; shift
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    s3://*|/*|.*|-*) ARGS+=("$a") ;;
+    *)               ARGS+=("$BUCKET/$a") ;;
+  esac
+done
+exec aws s3 "$SUB" --region "$RUNPOD_S3_REGION" --endpoint-url "$RUNPOD_S3_ENDPOINT" "${ARGS[@]}"

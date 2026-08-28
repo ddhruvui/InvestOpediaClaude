@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Current pods, one per line: name id desiredStatus createdAt. Empty output = none running.
+set -euo pipefail
+. "$(dirname "$0")/_env.sh"
+curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
+  -H "Authorization: Bearer $RUNPOD_API_KEY" | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print('(pods API unreadable)'); sys.exit(0)
+p = d if isinstance(d,list) else d.get('pods', d.get('data', []))
+if not p: print('(no pods)')
+for x in p:
+    print('%-40s %-16s %-9s %s' % (x.get('name'), x.get('id'), x.get('desiredStatus'), x.get('createdAt')))
+"

@@ -68,6 +68,38 @@ Every spec vendor now has a puller.
 > **`eod_bulk` to 2000 is credit-bound, not disk-bound:** ~5,400 sessions x 100 credits ≈ 5.4 nightly
 > runs at the 100k/day cap, and ~21.5 GiB (day-files were 2 MiB in 2000, not today's 6.6 MiB).
 
+## GPU fallback when EU-RO-1 has no CPU (automatic)
+
+Every CPU job — all six fetchers, `validate`/`m1`/`post`, and `launch_predict.sh`'s
+`test`/`market`/`stage1`/`stage3`/`predict` — now tries a **CPU pod first** and, only on a
+capacity refusal, falls back to the **cheapest available GPU**. The network volume pins us to
+one datacenter, and EU-RO-1 CPU capacity has gone to zero for hours at a time (2026-08-24, -26,
+-27), which is enough to miss the open. GPU hosts are a separate pool and are usually free.
+
+Nothing about the compute changes: these jobs are pandas/LightGBM and never touch CUDA. The
+GPU is rented purely for the host slot, and the pod still runs the **CPU image and CPU pip
+set** — not the PyTorch image. `stage2` is unaffected; it keeps its own native GPU path.
+
+A GPU pod is also *far* better resourced than any CPU flavor, so the fallback incidentally
+removes the OOM risk (measured in EU-RO-1, 1 GPU + volume, 2026-08-27):
+
+| host | $/hr | vCPU | RAM |
+|---|---|---|---|
+| CPU 4 vCPU (m1/post/validate floor) | ~0.10 | 4 | 8 GB |
+| CPU 8 vCPU (market/predict) | ~0.20 | 8 | 16 GB |
+| **GPU RTX A4500** (first choice) | **0.25** | 12 | **62 GB** |
+| GPU RTX 4000 Ada | 0.28 | 9 | 50 GB |
+| GPU RTX 4090 | 0.74 | 16 | 61 GB |
+
+These jobs run for minutes, so the delta is cents. The launcher prints which host class took
+the job (`placed on: GPU NVIDIA RTX A4500`).
+
+    GPU_FALLBACK=0 data_acquisition/scripts/launch.sh all    # disable, CPU-only (will wait)
+    RUNPOD_GPU_FALLBACK_TYPES='NVIDIA RTX A4500|NVIDIA A40' scripts/launch_predict.sh predict
+
+Only a genuine capacity refusal triggers it — a bad token or malformed request still fails
+loudly instead of quietly costing GPU money.
+
 One-time: `cp data_acquisition/runpod/.env.example data_acquisition/runpod/.env` and fill it in
 (RunPod account/S3 keys + network-volume id, plus the token for whichever vendor you launch —
 `EODHD_API_TOKEN`, `SHARADAR_API_KEY`, and/or `TIINGO_API_TOKEN`). Edit the universe in

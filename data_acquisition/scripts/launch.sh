@@ -56,6 +56,30 @@ DRY_RUN="${DRY_RUN:-}"
 # rents whichever listed flavor is free). Valid: cpu3c cpu3g cpu3m cpu5c cpu5g cpu5m.
 FLAVORS="${RUNPOD_CPU_FLAVORS:-[\"cpu3c\",\"cpu3g\",\"cpu3m\",\"cpu5c\",\"cpu5g\",\"cpu5m\"]}"
 
+# Container disk is host-local scratch, NOT the network volume: every fetcher writes its
+# data to /workspace (the volume), so this only has to hold the image + pip deps (~1-2 GB).
+# It is also a REAL placement constraint — on 2026-08-27 EU-RO-1 refused a 20 GB request at
+# every vCPU count and flavor while an otherwise identical 10 GB request placed instantly.
+# Keep this small; raise it per-run with RUNPOD_CONTAINER_DISK_GB if a job ever needs it.
+CONTAINER_DISK="${RUNPOD_CONTAINER_DISK_GB:-10}"
+
+# GPU FALLBACK. EU-RO-1 runs out of CPU capacity for hours at a time (2026-08-24, -26, -27),
+# and the volume pins us to that one datacenter, so "wait for CPU" can mean missing the open.
+# GPU hosts are a separate pool and are frequently free when every CPU flavor is refused, so
+# every CPU job falls back to the CHEAPEST placeable GPU. This is a capacity workaround, not
+# a compute change: the jobs are pure-Python/pandas and never touch CUDA.
+#
+# The economics favour it. Measured in EU-RO-1 on 2026-08-27, 1 GPU with the volume attached:
+#   RTX A4500      $0.25/hr  12 vCPU  62 GB RAM
+#   RTX 4000 Ada   $0.28/hr   9 vCPU  50 GB RAM
+#   RTX 4090       $0.74/hr  16 vCPU  61 GB RAM
+# A GPU pod carries FAR more RAM than any CPU flavor (4-16 GB), so the fallback also makes the
+# 8 GB memory floor moot. Jobs run minutes, so the delta is cents. Cheapest first; A4500 is
+# ~5x the RAM of the 4-vCPU CPU pod for a few cents an hour more.
+# Set GPU_FALLBACK=0 to disable, or RUNPOD_GPU_FALLBACK_TYPES to reorder.
+GPU_FALLBACK="${GPU_FALLBACK:-1}"
+GPU_FALLBACK_TYPES="${RUNPOD_GPU_FALLBACK_TYPES:-NVIDIA RTX A4500|NVIDIA RTX 4000 Ada Generation|NVIDIA GeForce RTX 3090|NVIDIA RTX A6000|NVIDIA GeForce RTX 4090|NVIDIA A40}"
+
 FAILED=""
 
 # One pod per vendor at a time: a vendor whose pod is still running (e.g. tiingo's ~5h paced run)
@@ -78,8 +102,23 @@ launch_vendor() {
     # EU-RO-1 while 2 vCPU placed immediately and completed 1,513 jobs with 0 failures, including
     # both bulk zips (SF1 681,727 rows, ACTIONS 668,409). m1/post still ask for 4: they hold whole
     # tables in pandas, which streaming does not help.
-    nasdaq)        VCPU="${RUNPOD_VCPU:-2}" ;;
-    m1|post)       VCPU="${RUNPOD_VCPU:-4}" ;;
+    nasdaq)              VCPU="${RUNPOD_VCPU:-2}" ;;
+    m1|post|validate)    VCPU="${RUNPOD_VCPU:-4}" ;;
+  esac
+  # MEMORY FLOOR. RunPod gives 2 GB per vCPU, and on 2026-08-27 a 2-vCPU (4 GB) post pod had
+  # BOTH stages SIGKILLed (exit -9) partway through: validate died before writing quarantine.json
+  # and build_m1 died after 6 of 8 tables. The pod still terminated normally, so m1/_manifest.json
+  # silently stayed a day stale with a half-rewritten table set — models then read yesterday's
+  # tables believing them current. Refuse rather than half-build; ALLOW_SMALL_POD=1 to override
+  # (e.g. deliberately taking the only slot available to hold post.py's manifest gate).
+  case "$VENDOR" in
+    m1|post|validate)
+      if [ "$VCPU" -lt 4 ] && [ -z "${ALLOW_SMALL_POD:-}" ]; then
+        echo "REFUSING $VENDOR at ${VCPU} vCPU ($((VCPU * 2)) GB): needs >= 4 vCPU / 8 GB." >&2
+        echo "  4 GB SIGKILLs these stages partway and leaves a STALE m1 manifest behind." >&2
+        echo "  Set ALLOW_SMALL_POD=1 to override if you accept a possible half-build." >&2
+        return 1
+      fi ;;
   esac
   case "$VENDOR" in
     eodhd)
@@ -149,16 +188,22 @@ launch_vendor() {
   # post.py's manifest gate: "fresh" = ended_at newer than this launch (see post.py docstring)
   local PAYLOAD RESP CODE BODY POD_ID LAUNCHED_AT
   LAUNCHED_AT=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
-  PAYLOAD=$(cat <<JSON
+  # COMPUTE is the only part that differs between a CPU pod and the GPU fallback.
+  build_payload() {   # $1: "" for CPU, else a gpuTypeId
+    local COMPUTE
+    if [ -z "$1" ]; then
+      COMPUTE="\"computeType\": \"CPU\", \"vcpuCount\": ${VCPU}, \"cpuFlavorIds\": ${FLAVORS}"
+    else
+      COMPUTE="\"computeType\": \"GPU\", \"gpuCount\": 1, \"gpuTypeIds\": [\"$1\"]"
+    fi
+    cat <<JSON
 {
   "name": "investopediaclaude-${VENDOR}",
-  "computeType": "CPU",
+  ${COMPUTE},
   "cloudType": "SECURE",
-  "vcpuCount": ${VCPU},
-  "cpuFlavorIds": ${FLAVORS},
   "imageName": "${IMAGE}",
   "networkVolumeId": "${RUNPOD_VOLUME_ID}",
-  "containerDiskInGb": ${RUNPOD_CONTAINER_DISK_GB:-20},
+  "containerDiskInGb": ${CONTAINER_DISK},
   "volumeMountPath": "/workspace",
   "dataCenterIds": ["${DC}"],
   "dockerStartCmd": ["bash", "/workspace/code/bootstrap.sh"],
@@ -174,28 +219,59 @@ launch_vendor() {
   }
 }
 JSON
-)
+  }
+
+  # Try CPU first (cheapest); on a capacity refusal walk the GPU list cheapest-first.
+  local KIND
+  attempt_create() {   # $1: "" for CPU, else gpuTypeId
+    PAYLOAD=$(build_payload "$1")
+    RESP=$(curl -sS -w $'\n%{http_code}' -X POST https://rest.runpod.io/v1/pods \
+      -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+      -H 'Content-Type: application/json' \
+      -d "$PAYLOAD")
+    CODE=$(printf '%s' "$RESP" | tail -n1)
+    BODY=$(printf '%s' "$RESP" | sed '$d')
+    [ "$CODE" = "200" ] || [ "$CODE" = "201" ]
+  }
 
   echo "Creating $VENDOR CPU pod in ${DC} ..."
-  RESP=$(curl -sS -w $'\n%{http_code}' -X POST https://rest.runpod.io/v1/pods \
-    -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
-    -H 'Content-Type: application/json' \
-    -d "$PAYLOAD")
-  CODE=$(printf '%s' "$RESP" | tail -n1)
-  BODY=$(printf '%s' "$RESP" | sed '$d')
+  KIND="CPU ${VCPU}vCPU"
+  if ! attempt_create ""; then
+    # Only a capacity shortage justifies paying for a GPU; a malformed request or a bad
+    # token must still fail loudly rather than silently retrying six more times.
+    if [ "$GPU_FALLBACK" = "1" ] && printf '%s' "$BODY" | grep -q "no longer any instances\|no instances currently available"; then
+      echo "  no CPU capacity in ${DC} — falling back to the cheapest available GPU" >&2
+      local OLDIFS="$IFS" G
+      IFS='|'
+      for G in $GPU_FALLBACK_TYPES; do
+        IFS="$OLDIFS"
+        [ -n "$G" ] || continue
+        echo "  trying GPU: $G" >&2
+        if attempt_create "$G"; then KIND="GPU $G"; break; fi
+        IFS='|'
+      done
+      IFS="$OLDIFS"
+    fi
+  fi
 
   if [ "$CODE" != "200" ] && [ "$CODE" != "201" ]; then
     echo "$VENDOR pod create failed (HTTP $CODE):" >&2
     echo "$BODY" >&2
     echo "Hint: if it complains about CPU flavor, set RUNPOD_CPU_FLAVORS in runpod/.env" >&2
     echo "(valid flavors: cpu3c cpu3g cpu3m cpu5c cpu5g cpu5m)" >&2
+    [ "$GPU_FALLBACK" = "1" ] && echo "GPU fallback also found nothing free in ${DC}." >&2
     return 1
   fi
+  echo "  placed on: $KIND"
 
   if command -v jq >/dev/null; then
     POD_ID=$(printf '%s' "$BODY" | jq -r '.id // empty')
   else
-    POD_ID=$(printf '%s' "$BODY" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+    # NOT the old greedy sed: `.*"id"` matches the LAST "id" in the body, so a nested
+    # networkVolume.id wins and you get the volume id instead of the pod id (see
+    # launch_predict.sh, which shipped that bug and mis-reported a pod on 2026-08-27).
+    POD_ID=$(printf '%s' "$BODY" | \
+      python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
   fi
 
   if [ -n "${POD_ID:-}" ]; then

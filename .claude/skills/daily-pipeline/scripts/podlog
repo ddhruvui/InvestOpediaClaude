@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# podlog <pattern> [lines] — fetch the NEWEST _pod_logs entry matching <pattern> and tail it.
+# Pod logs live on the volume, so this works after the pod has self-terminated, which is
+# the only way to see why a finished job failed.
+set -euo pipefail
+. "$(dirname "$0")/_env.sh"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+PAT="$1"; N="${2:-25}"
+KEY=$("$HERE/vol" ls "$BUCKET/_pod_logs/" | awk '{print $4}' | grep -- "$PAT" | sort | tail -1)
+[ -n "$KEY" ] || { echo "no pod log matching '$PAT'" >&2; exit 1; }
+OUT="${TMPDIR:-/tmp}/podlog_$(echo "$PAT" | tr -c 'A-Za-z0-9._-' '_').txt"
+"$HERE/vol" cp "$BUCKET/_pod_logs/$KEY" "$OUT" --quiet
+echo "--- $KEY ($(wc -l < "$OUT" | tr -d ' ') lines) -> $OUT"
+tail -n "$N" "$OUT"

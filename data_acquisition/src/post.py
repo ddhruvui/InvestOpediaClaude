@@ -120,7 +120,19 @@ def main():
         env["DATA_DIR"] = os.path.join(VOLUME, "data_quality" if label == "validate" else "m1")
         env.pop("OUT_DIR", None)
         r = subprocess.run([sys.executable, path] + args, env=env)
-        log(f"=== {label} exit={r.returncode} ===")
+        # A NEGATIVE returncode means the child died on a signal, not a clean error exit.
+        # -9 (SIGKILL) is almost always the kernel OOM killer: on 2026-08-27 a 4 GB pod had
+        # both stages killed mid-run, yet "exit=-9" read like any other failure and the pod
+        # self-terminated normally, leaving a stale m1 manifest. Say plainly what happened.
+        if r.returncode < 0:
+            sig = -r.returncode
+            hint = ("  <-- KILLED BY SIGNAL 9 (SIGKILL): almost certainly out of memory. "
+                    "This stage needs >= 8 GB (4 vCPU); it did NOT finish and whatever it "
+                    "had already written is a PARTIAL build." if sig == 9 else
+                    f"  <-- killed by signal {sig}; the stage did NOT finish.")
+            log(f"=== {label} exit={r.returncode} ==={hint}")
+        else:
+            log(f"=== {label} exit={r.returncode} ===")
         if r.returncode != 0:
             rc = 1
     return rc
