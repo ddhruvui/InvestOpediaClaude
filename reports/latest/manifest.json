@@ -1,5 +1,5 @@
 {
- "built_utc": "2026-08-28T13:26:12+00:00",
+ "built_utc": "2026-08-29T05:31:16+00:00",
  "source_dir": "derived",
  "sections": {
   "summary": {
@@ -11,8 +11,8 @@
    "points": 1526
   },
   "suggestions": {
-   "as_of": "2026-08-27",
-   "n": 232
+   "as_of": "2026-08-28",
+   "n": 231
   },
   "config": {
    "config_hash": "95024ffb26b69ce6dddc94f40332c5a2441b987e1a762f0212ffcc981a645837"

@@ -11,7 +11,10 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$(cd "$HERE/../../../.." && pwd)"
 say() { echo "[$(date -u +%H:%M:%SZ)] mirror: $*"; }
-mirror() { "$HERE/vol" cp "$1" "$2" --quiet >/dev/null 2>&1; }
+# NOTE: vol treats a bare relative path as a VOLUME path, so a relative DESTINATION
+# turns the download into a silent S3->S3 copy that exits 0 and writes nothing
+# locally. Always hand vol an absolute local destination, and confirm the file landed.
+mirror() { "$HERE/vol" cp "$1" "$PWD/$2" --quiet >/dev/null 2>&1 && [ -f "$2" ]; }
 
 mkdir -p derived
 
