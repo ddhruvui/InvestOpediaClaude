@@ -11,8 +11,10 @@ prompt itself can stay short — it does not need to re-explain the pipeline.
 > pods stuck in a bad state. Do the needful.
 
 Best fired **after 21:00 UTC** (17:00 ET). EODHD publishes the bulk day-file around 23:30 UTC,
-so later in the evening is safer, not worse — a day-file pulled mid-session is frozen
-incomplete permanently.
+so later in the evening is safer, not worse. (The fetcher re-pulls the trailing few sessions
+each night, so an early or light pull self-heals the next night — but the book prices against
+tonight's pull, so launch late anyway. The same-night file always runs ~12% light: late fund-NAV
+series, no equity names.)
 
 ## Variants
 
@@ -66,6 +68,11 @@ daily loop; they are rerun on code or config changes, or on the monthly cadence 
 G-11 gate. The dashboard's verdict, equity curve and trade counts come from their existing
 reports, so those numbers not moving after a daily run is expected.
 
-Ask for them explicitly if you want them:
+Ask for them explicitly if you want them — the `monthly-pipeline` skill
+(`.claude/skills/monthly-pipeline/`) carries that runbook:
+
+> Run the monthly stage refresh.
+
+or, for a partial rerun:
 
 > Also rerun stage1 and stage3 to refresh the gate verdict.

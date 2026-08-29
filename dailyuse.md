@@ -114,10 +114,11 @@ One-time: `cp data_acquisition/runpod/.env.example data_acquisition/runpod/.env`
 ```sh
 # 1. Fetch: upload the vendor's fetcher+config, launch a CPU pod per vendor that downloads to the
 #    volume, then self-terminates. Fire-and-forget.
-#    DAILY: run `all` at ~22:00 UTC (18:00 ET). Not earlier than 21:00 UTC — the bulk day-file
-#    must not be pulled mid-session (a partial file would be frozen; the fetcher skips existing
-#    day-files forever), and EODHD only publishes it ~23:30 UTC (the fetch reaches the bulk job
-#    ~80 min in). Finish before 00:00 UTC so manifests stay on the same UTC day.
+#    DAILY: run `all` at ~22:00 UTC (18:00 ET). Not earlier than 21:00 UTC — EODHD publishes
+#    the bulk day-file ~23:30 UTC and the fetch reaches the bulk job ~80 min in. The fetcher
+#    re-pulls the trailing few sessions nightly (EODHD mutates recent day-files; the same-night
+#    file runs ~12% light on late fund-NAV series), so an early pull self-heals the NEXT night —
+#    but tonight's book prices against tonight's pull, so launch late anyway.
 data_acquisition/scripts/launch.sh all        # DAILY ROUTINE: EODHD + Sharadar + Tiingo (one pod
                                               # each; already-running vendors are skipped, not doubled)
 data_acquisition/scripts/launch.sh            # EODHD only (default)
@@ -186,7 +187,7 @@ The network volume **persists `data/` between launches**, so a re-launch only ad
 |---|---|---|
 | `news` | **incremental** — fetch only rows dated ≥ the latest stored, merge & dedup | append-only; this is where the savings are |
 | `estimates` | **incremental** — append one dated Earnings::Trend snapshot per pull day | D-14 immutable PIT history accrues forward |
-| `eod_bulk` | **resume** — newest-first, skip day-files already on the volume, `max_days_per_run` cap | date-partitioned; unadjusted OHLCV is immutable so old day-files never re-pull |
+| `eod_bulk` | **resume + trailing re-pull** — newest-first, skip day-files already on the volume except the trailing few sessions, which re-pull every night; `max_days_per_run` cap | EODHD mutates recent day-files (late fund-NAV prints, corporate-action rewrites — see vendor-facts table), so the tail must refresh; deep history is left as stored |
 | `eod`, `dividends`, `splits`, `market`, `market_dividends` | **full refetch** (tiny) | EODHD rewrites `adjusted_close` retroactively after a split/dividend |
 | `fundamentals`, `index_constituents`, `exchanges`, `symbol_lists`, `earnings_upcoming` | **full refetch** (snapshots) | point-in-time objects, replaced whole |
 

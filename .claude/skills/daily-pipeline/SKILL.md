@@ -10,25 +10,32 @@ it, watch it, **verify each stage actually did its work**, and only then let the
 run. The recurring danger is not loud failure — it is a stage that exits, self-terminates,
 and leaves stale output that the next stage happily consumes.
 
-Bundled helpers (all read `data_acquisition/runpod/.env`; run them from the repo root):
+Bundled helpers (all read `data_acquisition/runpod/.env`). They live in
+`.claude/skills/daily-pipeline/scripts/` — NOT the repo-root `scripts/` — so always call them
+by that full path (`SK=.claude/skills/daily-pipeline/scripts` and `$SK/pods` works well):
 
 | script | what it does |
 |---|---|
-| `scripts/pods` | current pods, one per line; empty means none running |
-| `scripts/vol` | `aws s3` against the volume — `vol ls data/…`, `vol cp data/_run.json /tmp/x --quiet` |
-| `scripts/podlog <pattern> [n]` | newest matching `_pod_logs/` entry, tailed; works after the pod is gone |
-| `scripts/verify_fetch.py [FLOOR_ISO]` | per-vendor manifest check; exit 0 only if all fresh and zero hard failures |
-| `scripts/watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
-| `scripts/mirror_reports.sh` | pull results off the volume, enforce G-02, rebuild `reports/latest` |
+| `pods` | current pods, one per line; empty means none running |
+| `vol` | `aws s3` against the volume — `vol ls data/…`, `vol cp data/_run.json /tmp/x --quiet` (note: `_pod_logs/` sits at the volume ROOT, not under `data/`) |
+| `podlog <pattern> [n]` | newest matching `_pod_logs/` entry, tailed; works after the pod is gone |
+| `verify_fetch.py [FLOOR_ISO]` | per-vendor manifest check; exit 0 only if all fresh and zero hard failures |
+| `watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
+| `mirror_reports.sh` | pull results off the volume, enforce G-02, rebuild `reports/latest` |
 
 ## Before launching
 
 Check these — each has burned a real run:
 
-1. **Time.** Launch after 21:00 UTC. EODHD publishes the bulk day-file around 23:30 UTC, and
-   a day-file pulled mid-session is frozen incomplete forever (the fetcher never re-pulls an
-   existing one). Running after ~00:00 UTC is fine and often better.
-2. **No pods already running.** `scripts/pods`. A vendor whose pod is up is skipped, not
+1. **Time.** Launch after 21:00 UTC. EODHD publishes the bulk day-file around 23:30 UTC.
+   The fetcher re-pulls the trailing few sessions every night (EODHD mutates recent day-files),
+   so a same-night pull is not frozen forever — but it IS what the book prices against, so
+   launching late still matters. Expect the same-night file ~12% lighter than its neighbors
+   (~44k rows vs ~50k): the gap is late-publishing fund-NAV series (`0P…` codes), zero equity
+   names, and the next night's re-pull tops it up. In the fetch log, `+N day-files … 1 deferred`
+   is normal: the deferred one is the not-yet-published next session (or the 1999-12-31
+   backfill boundary), and the deep-history backfill is complete (`~1999-12-31+ remaining`).
+2. **No pods already running.** `$SK/pods`. A vendor whose pod is up is skipped, not
    doubled, so a stray pod silently means that vendor does not refresh.
 3. **Baseline the volume** so you can prove movement later: newest `data/eod_bulk/US/*.json`,
    and the `_run.json` timestamp of each vendor tree. Note the newest day-file — the run must
@@ -60,7 +67,7 @@ Start the watchdog and leave it attached to a Monitor — it only speaks on stat
 POLL=180 STALL_CHECKS=5 python3 .claude/skills/daily-pipeline/scripts/watch_pods.py
 ```
 
-While pods run, check progress with `scripts/podlog`. Rough shape of a warm run: calendar and
+While pods run, check progress with `$SK/podlog`. Rough shape of a warm run: calendar and
 finbert finish in seconds; nasdaq ~10 min; borrow ~30 min; tiingo ~35 min; **eodhd ~70-80 min**
 and is always the long pole; `post` then takes ~7 min once its gate clears.
 
@@ -85,6 +92,17 @@ Then confirm the session that just closed actually landed:
 
 Tiingo `DEFER` entries are budget deferrals, not failures — they resume next run.
 
+`finbert` reporting `added=0` is normal, not a shirked job: it only verifies the pinned
+model files (size+sha) are on the volume, so a warm run adds nothing.
+
+**Vendor restatements look like pipeline bugs but aren't.** If build_m1's row counts move by
+thousands day-over-day while validate stays green (e.g. `raw_prices_eod` SHRINKING despite a
+new session), suspect EODHD restating a single name's history. Diagnose it in one step: diff
+the `OK   eod <TICKER>.US: N` lines between the two nights' `fetch.py` pod logs — the ticker
+whose count jumped is your answer. Seen 2026-08-28: DD lost its entire pre-2017 (pre-DowDuPont)
+tape, −4,444 rows, every other name +0/+1. Daily predict (panel tail 2021+) doesn't care;
+note it for the next stage1–3 rerun instead.
+
 `borrow` is the one job whose misses are permanent: the IBKR snapshot is a live file with no
 history. Confirm its `borrow usa: N rows [snapshot …]` line appears. Its iBorrowDesk half only
 refreshes ~80 of 506 names per run, which is by design (each fetch returns a rolling year that
@@ -100,9 +118,15 @@ closes the gap), so a large "stale" count there is not an error.
 
 Require **three** things, not one: `validate exit=0`, `build_m1 exit=0`, and an `m1/_manifest.json`
 whose timestamp is from this run. A negative exit code is a signal death — `exit=-9` is the OOM
-killer, and it has previously left m1 with 3 of 8 tables rewritten while the pod still terminated
-normally and the manifest stayed a day old. If post failed, do **not** run market/predict; rerun
-`launch.sh validate` then `launch.sh m1` (neither has post's launch-time gate) and re-verify.
+killer. It has struck twice (once leaving 3 of 8 m1 tables rewritten, once — 2026-08-26's run —
+killing BOTH stages on a 2-vCPU pod) while the pod still terminated normally and the manifest
+stayed a day old. `launch.sh` now refuses `post`/`m1`/`validate` below 4 vCPU / 8 GB
+(`ALLOW_SMALL_POD=1` overrides — don't, unless you accept a possible half-build). If 8 GB ever
+OOMs again, relaunch with `RUNPOD_VCPU=8`; the GPU fallback (A4500 = 62 GB) also moots it.
+
+If post failed, do **not** run market/predict; rerun `launch.sh validate` then `launch.sh m1`
+**in that order** (build_m1 consumes validate's quarantine.json; neither has post's launch-time
+gate) and re-verify all three conditions above.
 
 Then, in order — `market` builds the panel `predict` consumes:
 
@@ -163,7 +187,8 @@ that bundle's timestamps before suspecting the app.
 `stage1`, `stage2` and `stage3` are **not** part of the daily loop — they are the research and
 backtest stages, rerun only on code/config change or the monthly cadence. The dashboard's
 verdict and trade counts come from their existing reports, so seeing unchanged numbers there
-is expected, not a bug.
+is expected, not a bug. When they ARE due, use the **`monthly-pipeline`** skill — it carries
+the stage ordering, sizing, runtimes, and the FULL_MIRROR finish.
 
 ## Reporting back
 
