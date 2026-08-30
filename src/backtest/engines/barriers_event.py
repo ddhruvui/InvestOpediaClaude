@@ -33,7 +33,8 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                        m_dn: float | None = None,
                        net_moo_costs: bool = False,
                        gross_cap: float | None = None,
-                       gross_cap_exact: bool = False) -> dict:
+                       gross_cap_exact: bool = False,
+                       stay_mask: pd.DataFrame | None = None) -> dict:
     """selection: wide bool frame (decision date x ticker) of names entering that
     day's tranche. Returns {'daily_net', 'equity', 'trades', 'pdt_log', ...}."""
     dates = panel.adj_open.index
@@ -109,6 +110,47 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
     pdt_log = []
     Ov = O.to_numpy()
     cols = {t: j for j, t in enumerate(O.columns)}
+
+    # 2b) optional rank-exit overlay: a position also exits (next-open MOO)
+    # after the first decision date where stay_mask says the name no longer
+    # qualifies (e.g. fell out of the top-N ranks). Only an AFFIRMATIVE False
+    # forces an exit — dates/names outside the mask stay neutral. Applied as
+    # an override on the barrier engine's result, like the PDT deferral; the
+    # earlier of (barrier exit, rank exit) wins.
+    if stay_mask is not None and len(ex):
+        SM = stay_mask.reindex(index=dates, columns=O.columns) \
+                      .fillna(True).to_numpy(bool)
+        n_d = len(dates)
+        for idx in ex.index:
+            i0 = pos[ex.at[idx, "fill_date"]]
+            i1 = pos[ex.at[idx, "exit_date"]]
+            jc = cols[ex.at[idx, "ticker"]]
+            hit_s = None
+            for s in range(i0, i1 - 1):     # decision at close s -> exit open s+1
+                if not SM[s, jc]:
+                    hit_s = s
+                    break
+            if hit_s is None:
+                continue
+            e = hit_s + 1
+            while e < n_d and not np.isfinite(Ov[e, jc]):
+                e += 1                       # halted bar: next tradable open
+            if e >= n_d or e >= i1:
+                continue                     # barrier exit comes first anyway
+            P0 = float(ex.at[idx, "entry_price"])
+            px = float(Ov[e, jc])
+            gross = px / P0 - 1.0
+            ex.at[idx, "exit_date"] = dates[e]
+            ex.at[idx, "exit_price"] = px
+            ex.at[idx, "barrier_hit"] = "rank"
+            ex.at[idx, "label"] = int(np.sign(gross)) if gross != 0 else 0
+            ex.at[idx, "exit_ret_gross"] = gross
+            ex.at[idx, "exit_ret_net"] = gross - cost_model.round_trip_frac(
+                side=1, holding_days=e - i0, ticker=ex.at[idx, "ticker"],
+                date=dates[e])
+            ex.at[idx, "holding_days"] = e - i0
+            ex.at[idx, "day_trade"] = False
+
     day_rows = ex.index[ex["day_trade"]]
     for i in day_rows:
         d_fill = ex.at[i, "fill_date"]

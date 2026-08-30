@@ -1,0 +1,8 @@
+[
+  {"name": "cash_h40_top5_vt20", "h": 40, "tranches": 15, "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h40_top5_vt20_xr15", "h": 40, "tranches": 15, "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true, "exit_rank": 15},
+  {"name": "cash_h40_top5_vt20_xr10", "h": 40, "tranches": 15, "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true, "exit_rank": 10},
+  {"name": "cash_h40_top5_vt20_xr25", "h": 40, "tranches": 15, "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true, "exit_rank": 25},
+  {"name": "cash_h60_top5_vt20_xr15", "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true, "exit_rank": 15},
+  {"name": "cash_h40_top5_vt20_xr15_cost30", "h": 40, "tranches": 15, "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true, "exit_rank": 15, "cost_bps": 30}
+]

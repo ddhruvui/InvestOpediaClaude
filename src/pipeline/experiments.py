@@ -358,6 +358,11 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
                   net_moo_costs=bool(v.get("net_moo")),
                   gross_cap=v.get("gross_cap"),
                   gross_cap_exact=bool(v.get("gc_exact")))
+        if v.get("exit_rank"):
+            # stay while rank <= exit_rank; only an affirmative worse rank
+            # forces the exit (NaN rank = no information = stay)
+            r_all = ens.rank(axis=1, ascending=False, method="first")
+            kw["stay_mask"] = ~r_all.gt(float(v["exit_rank"]))
         pre = run_event_backtest(sel, panel, sigma32, cm_v, cfg_v,
                                  day_budget_mult=gm_series, **kw)
         vt = vol_target_scale(pre["daily_net"], vt_target, vt_cap)
@@ -384,7 +389,7 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
         LEVERS = ("scores", "weighting", "skip_earnings", "m", "h", "thr_cap",
                   "vol_thr", "vt", "vt_cap", "top_n", "tranches", "name_cap",
                   "m_up", "m_dn", "cost_bps", "sent_gate", "net_moo",
-                  "fin_bps_yr", "gross_cap", "gc_exact")
+                  "fin_bps_yr", "gross_cap", "gc_exact", "exit_rank")
         row = {"name": name, **{k: v.get(k) for k in LEVERS},
                "members": members, **met}
         results.append(row)
