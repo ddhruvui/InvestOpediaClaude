@@ -1,0 +1,18 @@
+[
+  {"name": "h60_top20_nm_vt30", "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true},
+  {"name": "h60_top20_nm_vt35", "top_n": 20, "name_cap": 0.10, "vt": 0.35, "vt_cap": 3.0, "net_moo": true},
+  {"name": "h60_top10_nm_vt30", "top_n": 10, "name_cap": 0.20, "vt": 0.30, "vt_cap": 2.5, "net_moo": true},
+  {"name": "h20_top20_nm_vt30", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true},
+  {"name": "h20_top20_nm_vt35", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.35, "vt_cap": 3.0, "net_moo": true},
+  {"name": "h20_top10_nm_vt30", "h": 20, "tranches": 15, "top_n": 10, "name_cap": 0.20, "vt": 0.30, "vt_cap": 2.5, "net_moo": true},
+  {"name": "h20_top20_nm_vt30_m10", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "m": 1.0},
+  {"name": "h20_top20_nm_vt30_fast", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "members": ["lgbm_h5", "gru_h5", "lgbm_h20", "gru_h20"]},
+  {"name": "h60_top20_nm_vt30_rg20", "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "vol_thr": 0.20},
+  {"name": "h20_top20_nm_vt30_rg20", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "vol_thr": 0.20},
+  {"name": "h60_top20_nm_vt30_fin600", "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "fin_bps_yr": 600},
+  {"name": "h20_top20_nm_vt30_fin600", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "fin_bps_yr": 600},
+  {"name": "h60_top20_nm_vt30_cost30", "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "cost_bps": 30},
+  {"name": "h60_top20_nm_vt30_earnskip", "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "skip_earnings": true},
+  {"name": "h60_top20_nm_vt30_thrcap40", "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "thr_cap": 0.40},
+  {"name": "h20_top20_nm_vt30_sent", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "sent_gate": -0.10}
+]
