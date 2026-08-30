@@ -195,8 +195,11 @@ def _book_metrics(res: dict, dates_active: pd.DatetimeIndex) -> dict:
     # panel (2000+) but scores start later; leading flat years dilute CAGR
     dn = res["daily_net"].reindex(dates_active).dropna()
     tr = res["trades"]
-    cost_nav = float((tr["tranche_w"] * (tr["exit_ret_gross"]
-                                         - tr["exit_ret_net"])).sum()) if len(tr) else 0.0
+    if res.get("cost_daily") is not None:
+        cost_nav = float(res["cost_daily"].sum())   # actual charged (nets MOO legs)
+    else:
+        cost_nav = float((tr["tranche_w"] * (tr["exit_ret_gross"]
+                                             - tr["exit_ret_net"])).sum()) if len(tr) else 0.0
     yrs = max(1e-9, len(dates_active) / 252)
     eq = (1 + dn.fillna(0.0)).cumprod()
     cagr = float(eq.iloc[-1] ** (252 / max(1, len(dn))) - 1) if len(dn) else float("nan")
@@ -351,7 +354,8 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
 
         gm_series = gm.reindex(test_dates).fillna(1.0)
         kw = dict(m=v.get("m"), h=v.get("h"), thr_cap=v.get("thr_cap"),
-                  m_up=v.get("m_up"), m_dn=v.get("m_dn"))
+                  m_up=v.get("m_up"), m_dn=v.get("m_dn"),
+                  net_moo_costs=bool(v.get("net_moo")))
         pre = run_event_backtest(sel, panel, sigma32, cm_v, cfg_v,
                                  day_budget_mult=gm_series, **kw)
         vt = vol_target_scale(pre["daily_net"], vt_target, vt_cap)
@@ -364,7 +368,7 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
                                              fwd.reindex(test_dates)).mean())
         LEVERS = ("scores", "weighting", "skip_earnings", "m", "h", "thr_cap",
                   "vol_thr", "vt", "vt_cap", "top_n", "tranches", "name_cap",
-                  "m_up", "m_dn", "cost_bps", "sent_gate")
+                  "m_up", "m_dn", "cost_bps", "sent_gate", "net_moo")
         row = {"name": name, **{k: v.get(k) for k in LEVERS},
                "members": members, **met}
         results.append(row)

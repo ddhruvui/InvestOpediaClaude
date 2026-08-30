@@ -28,7 +28,8 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                        h: int | None = None,
                        thr_cap: float | None = None,
                        m_up: float | None = None,
-                       m_dn: float | None = None) -> dict:
+                       m_dn: float | None = None,
+                       net_moo_costs: bool = False) -> dict:
     """selection: wide bool frame (decision date x ticker) of names entering that
     day's tranche. Returns {'daily_net', 'equity', 'trades', 'pdt_log', ...}."""
     dates = panel.adj_open.index
@@ -101,23 +102,54 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
 
     # 4) mark-to-market daily P&L per position -> book daily returns (compounded
     #    on the tranche budget; costs at entry+exit legs are inside exit_ret_net)
+    #
+    # net_moo_costs: entries fill MOO, and vertical exits leave MOO at the SAME
+    # open print — a live order file nets the two per ticker, so only the NET
+    # traded notional pays the leg cost. Per-tranche accounting otherwise charges
+    # a persistent name a full round trip every h sessions for re-entering
+    # itself, which at short h is the dominant (and fictional) cost.
+    # Intraday barrier exits (upper/lower/censored) cannot net against a MOO
+    # entry and always pay their leg. Default False = original accounting.
     pnl = np.zeros(len(dates))
+    leg = cost_model.leg_frac()
+    buy_open: dict[tuple[int, int], float] = {}    # (day, ticker) MOO buys
+    sell_open: dict[tuple[int, int], float] = {}   # (day, ticker) MOO sells
+    cost = np.zeros(len(dates))
     for r in ex.itertuples(index=False):
         i0, i1 = pos[r.fill_date], pos[r.exit_date]
         j = cols[r.ticker]
         path = Ov[i0:i1 + 1, j].copy()
         path[-1] = r.exit_price
         rets = np.diff(path) / path[:-1]
-        # entry leg cost on day of fill, exit leg + borrow inside net-gross spread
-        pnl[i0] -= r.tranche_w * cost_model.leg_frac()
         if i1 > i0:
             pnl[i0 + 1:i1 + 1] += r.tranche_w * rets
         else:   # same-session round trip: open->barrier within the fill session
             pnl[i0] += r.tranche_w * (r.exit_price / r.entry_price - 1)
-        pnl[i1] -= r.tranche_w * cost_model.leg_frac()
+        exit_at_open = i1 > i0 and r.exit_price == Ov[i1, j]
+        if net_moo_costs:
+            buy_open[(i0, j)] = buy_open.get((i0, j), 0.0) + r.tranche_w
+            if exit_at_open:
+                sell_open[(i1, j)] = sell_open.get((i1, j), 0.0) + r.tranche_w
+            else:
+                cost[i1] += r.tranche_w * leg
+        else:
+            # inline application preserves the original float summation order —
+            # the default path stays bit-identical to the pre-netting engine
+            pnl[i0] -= r.tranche_w * leg
+            pnl[i1] -= r.tranche_w * leg
+            cost[i0] += r.tranche_w * leg
+            cost[i1] += r.tranche_w * leg
+    if net_moo_costs:
+        for (i, j), w in buy_open.items():
+            net_w = w - sell_open.pop((i, j), 0.0)
+            cost[i] += abs(net_w) * leg
+        for (i, j), w in sell_open.items():   # MOO sells with no same-day buy
+            cost[i] += w * leg
+        pnl -= cost
     daily = pd.Series(pnl, index=dates)
     equity = (1 + daily).cumprod() * nav0
     return {"daily_net": daily, "equity": equity, "trades": ex, "pdt_log": pdt_log,
             "n_trades": int(len(ex)),
             "avg_hold": float(ex["holding_days"].mean()),
+            "cost_daily": pd.Series(cost, index=dates),
             "hit_counts": ex["barrier_hit"].value_counts().to_dict()}
