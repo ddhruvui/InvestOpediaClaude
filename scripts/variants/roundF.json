@@ -1,0 +1,12 @@
+[
+  {"name": "cash_h60_top5_vt20", "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h60_top7_vt20", "top_n": 7, "name_cap": 0.25, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h60_top5_vt15", "top_n": 5, "name_cap": 0.30, "vt": 0.15, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h60_top7_vt15", "top_n": 7, "name_cap": 0.25, "vt": 0.15, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h60_top10_vt15", "top_n": 10, "name_cap": 0.20, "vt": 0.15, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h40_top5_vt20", "h": 40, "tranches": 15, "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h40_top7_vt20", "h": 40, "tranches": 15, "top_n": 7, "name_cap": 0.25, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h40_top10_vt20", "h": 40, "tranches": 15, "top_n": 10, "name_cap": 0.20, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true},
+  {"name": "cash_h60_top5_vt20_cost30", "top_n": 5, "name_cap": 0.30, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true, "cost_bps": 30},
+  {"name": "cash_h40_top7_vt20_cost30", "h": 40, "tranches": 15, "top_n": 7, "name_cap": 0.25, "vt": 0.20, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0, "gc_exact": true, "cost_bps": 30}
+]
