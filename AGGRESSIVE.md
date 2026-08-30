@@ -39,6 +39,10 @@ last-3y and was explicitly declined (no borrowed money).
    thresholds, barrier width caps, asymmetric/tight barriers, m=2.0.
 7. **What failed**: every 3–10 day cycle. 30bps round trips × 25-50 turns/yr
    is a 8–15%/yr headwind no gate fixed. h20 is the shortest viable cycle.
+   Rank-triggered exits (round G: sell once a holding falls past rank
+   10/15/25) collapse holds to 4–7 days — top-of-book rank is noise while the
+   position's alpha persists — and crush CAGR to 1.7–7.9%. Barriers + the
+   vertical remain the exit rule.
 
 ## Run it
 
