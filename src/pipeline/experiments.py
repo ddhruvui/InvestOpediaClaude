@@ -363,12 +363,26 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
         res = run_event_backtest(sel, panel, sigma32, cm_v, cfg_v,
                                  day_budget_mult=budget, **kw)
 
+        if v.get("fin_bps_yr"):
+            # margin financing on gross above 1x NAV (the engine models no
+            # cash constraint; a vol-targeted concentrated book runs >1x)
+            tr_res = res["trades"]
+            idx = res["daily_net"].index
+            g_in = tr_res.groupby("fill_date")["tranche_w"].sum()
+            g_out = tr_res.groupby("exit_date")["tranche_w"].sum()
+            gross_d = (g_in.reindex(idx, fill_value=0.0)
+                       - g_out.reindex(idx, fill_value=0.0)).cumsum()
+            drag = (gross_d - 1.0).clip(lower=0.0) \
+                * float(v["fin_bps_yr"]) / 1e4 / 252.0
+            res["daily_net"] = res["daily_net"] - drag
+
         met = _book_metrics(res, test_dates)
         met["ic_rank"] = float(daily_rank_ic(ens.rank(axis=1, pct=True),
                                              fwd.reindex(test_dates)).mean())
         LEVERS = ("scores", "weighting", "skip_earnings", "m", "h", "thr_cap",
                   "vol_thr", "vt", "vt_cap", "top_n", "tranches", "name_cap",
-                  "m_up", "m_dn", "cost_bps", "sent_gate", "net_moo")
+                  "m_up", "m_dn", "cost_bps", "sent_gate", "net_moo",
+                  "fin_bps_yr")
         row = {"name": name, **{k: v.get(k) for k in LEVERS},
                "members": members, **met}
         results.append(row)

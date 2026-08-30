@@ -1,0 +1,18 @@
+[
+  {"name": "base_nm", "net_moo": true},
+  {"name": "h60_top20_nm", "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h20_top20_nm", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h10_top20_nm", "h": 10, "tranches": 10, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h7_top20_nm", "h": 7, "tranches": 7, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h5_top20_nm", "h": 5, "tranches": 5, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h3_top20_nm", "h": 3, "tranches": 3, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h5_top10_nm", "h": 5, "tranches": 5, "top_n": 10, "name_cap": 0.15, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h5_top50_nm", "h": 5, "tranches": 5, "top_n": 50, "name_cap": 0.06, "vt": 0.25, "vt_cap": 2.0, "net_moo": true},
+  {"name": "h5_top20_nm_vt12", "h": 5, "tranches": 5, "top_n": 20, "name_cap": 0.10, "vt": 0.12, "vt_cap": 1.5, "net_moo": true},
+  {"name": "h5_top20_nm_vt35", "h": 5, "tranches": 5, "top_n": 20, "name_cap": 0.10, "vt": 0.35, "vt_cap": 3.0, "net_moo": true},
+  {"name": "h10_top20_nm_vt35", "h": 10, "tranches": 10, "top_n": 20, "name_cap": 0.10, "vt": 0.35, "vt_cap": 3.0, "net_moo": true},
+  {"name": "h5_top20_nm_earnskip", "h": 5, "tranches": 5, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true, "skip_earnings": true},
+  {"name": "h5_top20_nm_sent", "h": 5, "tranches": 5, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true, "sent_gate": -0.10},
+  {"name": "h5_top20_nm_cost30", "h": 5, "tranches": 5, "top_n": 20, "name_cap": 0.10, "vt": 0.25, "vt_cap": 2.0, "net_moo": true, "cost_bps": 30},
+  {"name": "h10_top10_nm_vt35", "h": 10, "tranches": 10, "top_n": 10, "name_cap": 0.15, "vt": 0.35, "vt_cap": 3.0, "net_moo": true}
+]
