@@ -11,6 +11,8 @@ This engine cross-checks the fast path within |dSharpe| <= 0.1 tolerance [IMPL].
 """
 from __future__ import annotations
 
+import heapq
+
 import numpy as np
 import pandas as pd
 
@@ -30,7 +32,8 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                        m_up: float | None = None,
                        m_dn: float | None = None,
                        net_moo_costs: bool = False,
-                       gross_cap: float | None = None) -> dict:
+                       gross_cap: float | None = None,
+                       gross_cap_exact: bool = False) -> dict:
     """selection: wide bool frame (decision date x ticker) of names entering that
     day's tranche. Returns {'daily_net', 'equity', 'trades', 'pdt_log', ...}."""
     dates = panel.adj_open.index
@@ -68,7 +71,7 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
         w = (iv / iv.sum()).clip(upper=cap * tranches)   # cap at book level
         # M13 regime overlay + M14 vol targeting scale the ENTERING tranche
         bud = float(day_budget_mult.get(d0, 1.0)) if day_budget_mult is not None else 1.0
-        if gross_cap is not None:
+        if gross_cap is not None and not gross_cap_exact:
             i_d = pos.get(pd.Timestamp(d0))
             if i_d is not None:
                 while live_q and live_q[0][0] <= i_d:
@@ -123,6 +126,46 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                     side=int(ex.at[i, "side"]), holding_days=1)
                 ex.at[i, "day_trade"] = False
                 pdt_log.append({"date": str(d_fill), "action": "deferred_to_next_open"})
+
+    # 3b) EXACT gross cap (cash-account mode): scale each day's entering
+    # tranche so realized live gross never exceeds the cap, releasing capital
+    # on ACTUAL exit dates (barrier exits are weight-independent, so exits are
+    # known before sizing). An at-open exit (vertical / gap-through / deferred)
+    # frees its capital for that same open's entries — the MOO file sells and
+    # buys at one print; an intraday barrier exit frees it the next session.
+    # The projected cap above instead assumes every position runs to its
+    # vertical, leaving early-exit capital idle (~0.80x invested at cap 1.0).
+    if gross_cap is not None and gross_cap_exact and len(ex):
+        capg = float(gross_cap)
+        w_arr = ex["tranche_w"].to_numpy(float).copy()
+        i0_arr = np.array([pos[d] for d in ex["fill_date"]])
+        ie_arr = np.array([pos[d] for d in ex["exit_date"]])
+        at_open = np.array([
+            ie > i0 and ex_p == Ov[ie, cols[t]]
+            for ie, i0, ex_p, t in zip(ie_arr, i0_arr, ex["exit_price"], ex["ticker"])])
+        rel_arr = np.where(at_open, ie_arr, ie_arr + 1)
+        rel_heap: list[tuple[int, float]] = []
+        live = 0.0
+        k = 0
+        n_rows = len(ex)
+        while k < n_rows:
+            j = k
+            while j < n_rows and i0_arr[j] == i0_arr[k]:
+                j += 1
+            while rel_heap and rel_heap[0][0] <= i0_arr[k]:
+                live -= heapq.heappop(rel_heap)[1]
+            intended = float(w_arr[k:j].sum())
+            allowed = max(0.0, capg - live)
+            s = 1.0 if intended <= allowed else (allowed / intended if intended > 0 else 0.0)
+            if s < 1.0:
+                w_arr[k:j] *= s
+            for r in range(k, j):
+                if w_arr[r] > 0:
+                    heapq.heappush(rel_heap, (int(rel_arr[r]), float(w_arr[r])))
+            live += intended * s
+            k = j
+        ex = ex.assign(tranche_w=w_arr)
+        ex = ex[ex["tranche_w"] > 1e-12]
 
     # 4) mark-to-market daily P&L per position -> book daily returns (compounded
     #    on the tranche budget; costs at entry+exit legs are inside exit_ret_net)

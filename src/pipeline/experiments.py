@@ -356,7 +356,8 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
         kw = dict(m=v.get("m"), h=v.get("h"), thr_cap=v.get("thr_cap"),
                   m_up=v.get("m_up"), m_dn=v.get("m_dn"),
                   net_moo_costs=bool(v.get("net_moo")),
-                  gross_cap=v.get("gross_cap"))
+                  gross_cap=v.get("gross_cap"),
+                  gross_cap_exact=bool(v.get("gc_exact")))
         pre = run_event_backtest(sel, panel, sigma32, cm_v, cfg_v,
                                  day_budget_mult=gm_series, **kw)
         vt = vol_target_scale(pre["daily_net"], vt_target, vt_cap)
@@ -383,7 +384,7 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
         LEVERS = ("scores", "weighting", "skip_earnings", "m", "h", "thr_cap",
                   "vol_thr", "vt", "vt_cap", "top_n", "tranches", "name_cap",
                   "m_up", "m_dn", "cost_bps", "sent_gate", "net_moo",
-                  "fin_bps_yr", "gross_cap")
+                  "fin_bps_yr", "gross_cap", "gc_exact")
         row = {"name": name, **{k: v.get(k) for k in LEVERS},
                "members": members, **met}
         results.append(row)
