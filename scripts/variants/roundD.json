@@ -1,0 +1,10 @@
+[
+  {"name": "h60_top10_nm_vt30_gc20", "top_n": 10, "name_cap": 0.20, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "gross_cap": 2.0},
+  {"name": "h60_top10_nm_vt30_gc20_fin600", "top_n": 10, "name_cap": 0.20, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "gross_cap": 2.0, "fin_bps_yr": 600},
+  {"name": "h60_top20_nm_vt30_gc20_fin600", "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "gross_cap": 2.0, "fin_bps_yr": 600},
+  {"name": "h60_top20_nm_vt35_gc20_fin600", "top_n": 20, "name_cap": 0.10, "vt": 0.35, "vt_cap": 3.0, "net_moo": true, "gross_cap": 2.0, "fin_bps_yr": 600},
+  {"name": "h20_top20_nm_vt30_fast_gc20", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "gross_cap": 2.0, "members": ["lgbm_h5", "gru_h5", "lgbm_h20", "gru_h20"]},
+  {"name": "h20_top20_nm_vt30_fast_gc20_fin600", "h": 20, "tranches": 15, "top_n": 20, "name_cap": 0.10, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "gross_cap": 2.0, "fin_bps_yr": 600, "members": ["lgbm_h5", "gru_h5", "lgbm_h20", "gru_h20"]},
+  {"name": "h60_top10_nm_vt30_gc15_fin600", "top_n": 10, "name_cap": 0.20, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.5, "fin_bps_yr": 600},
+  {"name": "h60_top10_nm_vt30_gc10", "top_n": 10, "name_cap": 0.20, "vt": 0.30, "vt_cap": 2.5, "net_moo": true, "gross_cap": 1.0}
+]

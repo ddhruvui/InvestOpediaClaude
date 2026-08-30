@@ -29,11 +29,13 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                        thr_cap: float | None = None,
                        m_up: float | None = None,
                        m_dn: float | None = None,
-                       net_moo_costs: bool = False) -> dict:
+                       net_moo_costs: bool = False,
+                       gross_cap: float | None = None) -> dict:
     """selection: wide bool frame (decision date x ticker) of names entering that
     day's tranche. Returns {'daily_net', 'equity', 'trades', 'pdt_log', ...}."""
     dates = panel.adj_open.index
     O = panel.adj_open
+    pos = {d: i for i, d in enumerate(dates)}
     tranches = int(cfg.port.tranches)
     cap = float(cfg.port.single_name_cap)
     m_b = float(cfg.barrier.m) if m is None else float(m)
@@ -42,7 +44,15 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
         thr_cap = cfg.barrier.get("thr_cap_pct")
 
     # 1) entries per decision day with inverse-vol weights inside the tranche
+    #
+    # gross_cap: hard ceiling on PROJECTED live gross (sum of open tranche
+    # weights, assuming each runs to its vertical exit — early barrier exits
+    # only free capital sooner, so the projection is conservative). The
+    # entering tranche is scaled down to fit; a Reg-T margin account cannot
+    # follow the uncapped vol-target through low-vol regimes.
     entries = []
+    live_q: list[tuple[int, float]] = []   # (expiry index, entering gross)
+    live_gross = 0.0
     for d0, row in selection.iterrows():
         names = list(row.index[row.astype(bool)])
         if not names:
@@ -58,6 +68,21 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
         w = (iv / iv.sum()).clip(upper=cap * tranches)   # cap at book level
         # M13 regime overlay + M14 vol targeting scale the ENTERING tranche
         bud = float(day_budget_mult.get(d0, 1.0)) if day_budget_mult is not None else 1.0
+        if gross_cap is not None:
+            i_d = pos.get(pd.Timestamp(d0))
+            if i_d is not None:
+                while live_q and live_q[0][0] <= i_d:
+                    live_gross -= live_q.pop(0)[1]
+                intended = float(w.sum()) / tranches * bud
+                allowed = max(0.0, float(gross_cap) - live_gross)
+                if intended > allowed:
+                    bud *= allowed / intended if intended > 0 else 0.0
+                    intended = allowed
+                if intended > 0:
+                    live_q.append((i_d + h_b + 1, intended))
+                    live_gross += intended
+                if bud <= 0:
+                    continue
         for t, wt in w.items():
             entries.append({"date": d0, "ticker": t, "side": 1,
                             "tranche_w": wt / tranches * bud})
@@ -79,7 +104,6 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
     # 3) PDT: same-session exits; under $25k the exhausted 4th defers to next open
     pdt = PDTCounter(account_equity)
     pdt_log = []
-    pos = {d: i for i, d in enumerate(dates)}
     Ov = O.to_numpy()
     cols = {t: j for j, t in enumerate(O.columns)}
     day_rows = ex.index[ex["day_trade"]]
