@@ -9,6 +9,12 @@ cap ([IMPL], RUN_REPORT finding #1), and earnings-skip entries.
 
 Every variant lands in the G-09 trials ledger: DSR's N grows with every
 experiment run here, by design — that is what keeps the winner honest.
+
+Aggressive-book levers (branch aggressive-short-horizon): top_n concentration,
+tranche count (capital utilization at short holds), single-name cap, asymmetric
+barriers (m_up/m_dn), per-variant cost bps, and a FinBERT sentiment entry gate.
+Per-variant metrics now carry CAGR, calendar-year returns, subperiod blocks and
+realized gross exposure so aggressive variants are compared honestly.
 """
 from __future__ import annotations
 
@@ -19,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import load_config, git_sha
+from src.config import Cfg, load_config, git_sha
 from src.pipeline.common import prepare
 from src.ensemble.rank import member_ranks, deciles
 from src.backtest.costs import CostModel
@@ -104,38 +110,131 @@ def weighted_ensemble(ranks: dict[str, pd.DataFrame], mask: pd.DataFrame,
     return (num / den.where(den > 0)).where(mask)
 
 
+def _patch_cfg(cfg, tranches: int | None = None, name_cap: float | None = None):
+    """Read-only Cfg with per-variant port overrides (engine reads cfg.port.*)."""
+    if tranches is None and name_cap is None:
+        return cfg
+    d = cfg.to_dict()
+    port = dict(d["port"])
+    if tranches is not None:
+        port["tranches"] = int(tranches)
+    if name_cap is not None:
+        port["single_name_cap"] = float(name_cap)
+    d["port"] = port
+    return Cfg(d)
+
+
+# 16:00 ET ~= 21:00 UTC (same convention as src/features/sentiment.py, which we
+# do not import here — its scoring path drags in transformers on a CPU pod).
+CLOSE_UTC_HOUR = 21
+
+
+def sentiment_ewm3(cache_path: str | Path, dates: pd.DatetimeIndex,
+                   tickers: pd.Index) -> pd.DataFrame | None:
+    """Per-name 3-session EWM of FinBERT headline scores from the stage2 cache
+    (columns ticker/ts/title/s). After-close headlines belong to the NEXT
+    session — same cutoff as F9. Names/dates without coverage stay NaN."""
+    p = Path(cache_path)
+    if not p.exists():
+        return None
+    df = pd.read_parquet(p)
+    if df.empty or "s" not in df:
+        return None
+    eff = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(None)
+    after_close = eff.dt.hour >= CLOSE_UTC_HOUR
+    eff_date = eff.dt.normalize() + pd.to_timedelta(after_close.astype(int), unit="D")
+    pos = np.searchsorted(dates.values, eff_date.values, side="left")
+    pos = np.clip(pos, 0, len(dates) - 1)
+    df = df.assign(session=dates.values[pos])
+    mean = (df.groupby(["session", "ticker"], observed=True)["s"].mean()
+              .unstack("ticker").reindex(index=dates, columns=tickers))
+    return mean.ewm(span=3, adjust=False, min_periods=1).mean() \
+               .where(mean.notna().rolling(10, min_periods=1).max() > 0)
+
+
+def _gross_exposure(trades: pd.DataFrame, dates: pd.DatetimeIndex) -> dict:
+    """Realized gross invested (sum of live tranche weights) — the honesty
+    metric for utilization/leverage comparisons across variants."""
+    if not len(trades):
+        return {"avg_gross": 0.0, "max_gross": 0.0}
+    g_in = trades.groupby("fill_date")["tranche_w"].sum()
+    g_out = trades.groupby("exit_date")["tranche_w"].sum()
+    flow = g_in.reindex(dates, fill_value=0.0) - g_out.reindex(dates, fill_value=0.0)
+    gross = flow.cumsum()
+    return {"avg_gross": float(gross.mean()), "max_gross": float(gross.max())}
+
+
+def _period_block(dn: pd.Series) -> dict | None:
+    dn = dn.dropna()
+    if len(dn) < 60:
+        return None
+    eq = (1 + dn).cumprod()
+    yrs = len(dn) / 252
+    return {"sharpe": sharpe(dn), "ann_return": float(dn.mean() * 252),
+            "cagr": float(eq.iloc[-1] ** (1 / yrs) - 1),
+            "ann_vol": float(dn.std() * np.sqrt(252)),
+            "mdd": max_drawdown(dn), "n_days": int(len(dn))}
+
+
+def _sub_metrics(dn: pd.Series) -> dict:
+    """Subperiod blocks + calendar-year net returns. 'news_era' (2021+) is the
+    only window where the FinBERT overlay has coverage; 'last5y'/'last3y' answer
+    'what would this book have done recently', which a 19y average hides."""
+    end = dn.index.max()
+    out = {"full": _period_block(dn),
+           "last5y": _period_block(dn[dn.index >= end - pd.DateOffset(years=5)]),
+           "last3y": _period_block(dn[dn.index >= end - pd.DateOffset(years=3)]),
+           "news_era": _period_block(dn[dn.index >= "2021-01-01"])}
+    out["by_year"] = {str(y): float((1 + g).prod() - 1)
+                      for y, g in dn.groupby(dn.index.year)}
+    return out
+
+
 def _book_metrics(res: dict, dates_active: pd.DatetimeIndex) -> dict:
-    dn = res["daily_net"]
+    # metrics on the scored window only — the engine's series spans the whole
+    # panel (2000+) but scores start later; leading flat years dilute CAGR
+    dn = res["daily_net"].reindex(dates_active).dropna()
     tr = res["trades"]
     cost_nav = float((tr["tranche_w"] * (tr["exit_ret_gross"]
                                          - tr["exit_ret_net"])).sum()) if len(tr) else 0.0
     yrs = max(1e-9, len(dates_active) / 252)
+    eq = (1 + dn.fillna(0.0)).cumprod()
+    cagr = float(eq.iloc[-1] ** (252 / max(1, len(dn))) - 1) if len(dn) else float("nan")
     return {"sharpe_net": sharpe(dn), "mdd": max_drawdown(dn),
-            "ann_return": float(dn.mean() * 252), "ann_vol": float(dn.std() * np.sqrt(252)),
+            "ann_return": float(dn.mean() * 252), "cagr": cagr,
+            "ann_vol": float(dn.std() * np.sqrt(252)),
             "n_trades": int(res["n_trades"]), "avg_hold": res["avg_hold"],
             "hit_counts": res["hit_counts"],
             "cost_nav_per_yr": cost_nav / yrs,
-            "win_rate": float((tr["exit_ret_net"] > 0).mean()) if len(tr) else float("nan")}
+            "win_rate": float((tr["exit_ret_net"] > 0).mean()) if len(tr) else float("nan"),
+            **_gross_exposure(tr, dates_active),
+            "periods": _sub_metrics(dn)}
 
 
 def default_variants() -> list[dict]:
+    """Aggressive short-horizon exploration grid. `baseline` = the adopted h60
+    book (anchor + parity check); everything else trades holding time for
+    concentration and utilization. Pass VARIANTS/VARIANTS_B64 to override."""
     b = {"scores": "stage2", "weighting": "equal", "skip_earnings": False,
          "m": None, "h": None, "thr_cap": None}
+    top20 = {**b, "h": 5, "tranches": 5, "top_n": 20, "name_cap": 0.10}
     return [
         {**b, "name": "baseline"},
-        {**b, "name": "icir_w", "weighting": "icir"},
-        {**b, "name": "no_h5", "members": ["lgbm_h20", "lgbm_h60", "gru_h20", "gru_h60"]},
-        {**b, "name": "earnskip", "skip_earnings": True},
-        {**b, "name": "cap25", "thr_cap": 0.25},
-        {**b, "name": "cap15", "thr_cap": 0.15},
-        {**b, "name": "h40", "m": 1.5, "h": 40},
-        {**b, "name": "m20_h40", "m": 2.0, "h": 40},
-        {**b, "name": "m20_h60", "m": 2.0, "h": 60},
-        {**b, "name": "lgbm_news", "members": ["lgbm_h5", "lgbm_h20", "lgbm_h60"]},
-        {**b, "name": "lgbm_nonews", "scores": "stage1",
-         "members": ["lgbm_h5", "lgbm_h20", "lgbm_h60"]},
-        {**b, "name": "combo", "weighting": "icir", "skip_earnings": True,
-         "m": 1.5, "h": 40, "thr_cap": 0.25},
+        {**b, "name": "h5_matched", "h": 5, "tranches": 5},
+        {**top20, "name": "h5_top20"},
+        {**top20, "name": "h3_top20", "h": 3, "tranches": 3},
+        {**top20, "name": "h7_top20", "h": 7, "tranches": 7},
+        {**top20, "name": "h10_top20", "h": 10, "tranches": 10},
+        {**top20, "name": "h5_top10", "top_n": 10, "name_cap": 0.15},
+        {**top20, "name": "h5_top50", "top_n": 50, "name_cap": 0.06},
+        {**top20, "name": "h5_top20_vt25", "vt": 0.25, "vt_cap": 2.5},
+        {**top20, "name": "h5_top20_m075", "m": 0.75},
+        {**top20, "name": "h5_top20_asym", "m_up": 1.0, "m_dn": 2.0},
+        {**top20, "name": "h5_top20_earnskip", "skip_earnings": True},
+        {**top20, "name": "h5_top20_sent", "sent_gate": -0.10},
+        {**top20, "name": "h5_top20_fast",
+         "members": ["lgbm_h5", "gru_h5", "lgbm_h20", "gru_h20"]},
+        {**top20, "name": "h5_top20_cost30", "cost_bps": 30},
     ]
 
 
@@ -180,6 +279,15 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
     print(f"score sets: " + ", ".join(f"{k}={list(v)}" for k, v in sets.items()),
           flush=True)
 
+    # FinBERT overlay: load once if any variant gates on sentiment
+    sent = None
+    if any(v.get("sent_gate") is not None for v in variants):
+        sent = sentiment_ewm3(Path(scores_dir) / "sentiment_scores.parquet",
+                              panel.dates, panel.tickers)
+        cov = float(sent.notna().any(axis=0).mean()) if sent is not None else 0.0
+        print(f"sentiment overlay: {'loaded' if sent is not None else 'MISSING'} "
+              f"(name coverage {cov:.0%})", flush=True)
+
     ledger = TrialsLedger()
     results = []
     rank_cache: dict[tuple, dict[str, pd.DataFrame]] = {}
@@ -215,39 +323,60 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
         if v.get("weighting") == "icir":
             day_w = trailing_ic_weights(ranks, fwd.reindex(test_dates))
         ens = weighted_ensemble(ranks, msk, day_w)
-        dec = deciles(ens, msk)
-        sel = dec.eq(10)
+        if v.get("top_n"):
+            # concentration lever: absolute top-N per day (deciles are 10% of a
+            # 1000-name universe — far too diffuse for an aggressive book)
+            sel = ens.rank(axis=1, ascending=False, method="first") \
+                     .le(int(v["top_n"])) & msk
+        else:
+            dec = deciles(ens, msk)
+            sel = dec.eq(10)
         if v.get("skip_earnings") and earn2 is not None:
             sel = sel & ~earn2.reindex(test_dates).reindex(columns=sel.columns) \
                 .fillna(False)
+        if v.get("sent_gate") is not None and sent is not None:
+            # skip entries only where coverage EXISTS and is below the gate —
+            # uncovered names pass (coverage is 2020-12+, ~500 names)
+            bad = sent.reindex(test_dates).reindex(columns=sel.columns) \
+                      .le(float(v["sent_gate"])).fillna(False)
+            sel = sel & ~bad
+
+        cfg_v = _patch_cfg(cfg, v.get("tranches"), v.get("name_cap"))
+        cm_v = cm
+        if v.get("cost_bps") is not None:
+            cm_v = CostModel(per_trade_bps=float(v["cost_bps"]),
+                             borrow_gc_bps_yr=float(cfg.cost.borrow_gc_bps_yr),
+                             borrow_table=d["m1"].borrow_fees()
+                             if hasattr(d["m1"], "borrow_fees") else None)
 
         gm_series = gm.reindex(test_dates).fillna(1.0)
-        kw = dict(m=v.get("m"), h=v.get("h"), thr_cap=v.get("thr_cap"))
-        pre = run_event_backtest(sel, panel, sigma32, cm, cfg,
+        kw = dict(m=v.get("m"), h=v.get("h"), thr_cap=v.get("thr_cap"),
+                  m_up=v.get("m_up"), m_dn=v.get("m_dn"))
+        pre = run_event_backtest(sel, panel, sigma32, cm_v, cfg_v,
                                  day_budget_mult=gm_series, **kw)
         vt = vol_target_scale(pre["daily_net"], vt_target, vt_cap)
         budget = (gm_series * vt.reindex(test_dates).fillna(1.0)).clip(lower=0.0)
-        res = run_event_backtest(sel, panel, sigma32, cm, cfg,
+        res = run_event_backtest(sel, panel, sigma32, cm_v, cfg_v,
                                  day_budget_mult=budget, **kw)
 
         met = _book_metrics(res, test_dates)
         met["ic_rank"] = float(daily_rank_ic(ens.rank(axis=1, pct=True),
                                              fwd.reindex(test_dates)).mean())
-        row = {"name": name, **{k: v.get(k) for k in
-                                ("scores", "weighting", "skip_earnings", "m", "h",
-                                 "thr_cap", "vol_thr", "vt")},
+        LEVERS = ("scores", "weighting", "skip_earnings", "m", "h", "thr_cap",
+                  "vol_thr", "vt", "vt_cap", "top_n", "tranches", "name_cap",
+                  "m_up", "m_dn", "cost_bps", "sent_gate")
+        row = {"name": name, **{k: v.get(k) for k in LEVERS},
                "members": members, **met}
         results.append(row)
-        ledger.append(f"exp:{name}", {k: row[k] for k in
-                                      ("scores", "weighting", "skip_earnings",
-                                       "m", "h", "thr_cap", "vol_thr", "vt")},
+        ledger.append(f"exp:{name}", {k: row[k] for k in LEVERS},
                       config_hash, "stage3_variant", met["sharpe_net"],
                       note="experiments")
         res["daily_net"].to_frame("net").to_parquet(out / f"daily_net_{name}.parquet")
         print(f"== {name}: SR {met['sharpe_net']:.3f}  MDD {met['mdd']:.1%}  "
-              f"ann {met['ann_return']:.1%}  IC {met['ic_rank']:.4f}  "
-              f"trades {met['n_trades']:,}  cost/yr {met['cost_nav_per_yr']:.2%}",
-              flush=True)
+              f"CAGR {met['cagr']:.1%}  ann {met['ann_return']:.1%}  "
+              f"IC {met['ic_rank']:.4f}  trades {met['n_trades']:,}  "
+              f"hold {met['avg_hold']:.1f}d  gross {met['avg_gross']:.2f}x  "
+              f"cost/yr {met['cost_nav_per_yr']:.2%}", flush=True)
 
     report = {"stage": "experiments",
               "stamp": artifact_stamp(config_hash, d["m1"].data_snapshot_id(),
@@ -257,6 +386,7 @@ def run_experiments(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
     (out / "experiments_report.json").write_text(
         json.dumps(report, indent=2, default=str))
     print(json.dumps([{k: r[k] for k in ("name", "sharpe_net", "mdd", "ann_return",
+                                         "cagr", "avg_hold", "avg_gross",
                                          "ic_rank", "n_trades")}
                       for r in report["results"]], indent=2, default=str), flush=True)
     return report

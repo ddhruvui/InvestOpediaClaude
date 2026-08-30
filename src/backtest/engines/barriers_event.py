@@ -26,7 +26,9 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                        day_budget_mult: pd.Series | None = None,
                        nav0: float = 1.0, m: float | None = None,
                        h: int | None = None,
-                       thr_cap: float | None = None) -> dict:
+                       thr_cap: float | None = None,
+                       m_up: float | None = None,
+                       m_dn: float | None = None) -> dict:
     """selection: wide bool frame (decision date x ticker) of names entering that
     day's tranche. Returns {'daily_net', 'equity', 'trades', 'pdt_log', ...}."""
     dates = panel.adj_open.index
@@ -69,7 +71,7 @@ def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
     ex = barrier_exits(edf[["date", "ticker", "side"]], panel.adj_open, panel.adj_high,
                        panel.adj_low, panel.adj_close, sigma32, cost_model,
                        m=m_b, h=h_b, tie_break=str(cfg.barrier.tie_break),
-                       thr_cap=thr_cap)
+                       thr_cap=thr_cap, m_up=m_up, m_dn=m_dn)
     ex["tranche_w"] = edf["tranche_w"].to_numpy()
     ex = ex[ex["barrier_hit"].isin(["upper", "lower", "vertical", "censored"])]
 

@@ -10,6 +10,13 @@ ENV_FILE="$ROOT/runpod/.env"
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE — copy runpod/.env.example and fill it in" >&2; exit 1; }
 set -a; . "$ENV_FILE"; set +a
 
+# Experiment volumes (branch runs): RUNPOD_VOLUME_ID_OVERRIDE redirects every
+# script sourcing this file to another volume WITHOUT touching runpod/.env —
+# sourcing .env above would clobber a plain env override.
+if [ -n "${RUNPOD_VOLUME_ID_OVERRIDE:-}" ]; then
+  RUNPOD_VOLUME_ID="$RUNPOD_VOLUME_ID_OVERRIDE"
+fi
+
 : "${AWS_ACCESS_KEY_ID:?set in runpod/.env}"
 : "${AWS_SECRET_ACCESS_KEY:?set in runpod/.env}"
 : "${RUNPOD_VOLUME_ID:?set in runpod/.env}"

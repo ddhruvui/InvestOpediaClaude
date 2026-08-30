@@ -26,11 +26,15 @@ def barrier_exits(entries: pd.DataFrame, adj_open: pd.DataFrame, adj_high: pd.Da
                   adj_low: pd.DataFrame, adj_close: pd.DataFrame, sigma32: pd.DataFrame,
                   cost_model: CostModel, m: float = 1.5, h: int = 20,
                   tie_break: str = "stop_first",
-                  thr_cap: float | None = None) -> pd.DataFrame:
+                  thr_cap: float | None = None,
+                  m_up: float | None = None, m_dn: float | None = None) -> pd.DataFrame:
     """entries: DataFrame with columns (date, ticker, side). Returns one row per entry:
     entry_date, ticker, side, fill_date, entry_price, exit_date, exit_price,
     barrier_hit in {upper, lower, vertical, censored, no_fill}, label,
-    exit_ret_gross, exit_ret_net, holding_days, day_trade."""
+    exit_ret_gross, exit_ret_net, holding_days, day_trade.
+
+    m_up/m_dn: optional asymmetric multipliers for the upper/lower barrier
+    (None -> both use m, byte-identical to the symmetric engine)."""
     dates = adj_open.index
     pos = {d: i for i, d in enumerate(dates)}
     cols = {t: j for j, t in enumerate(adj_open.columns)}
@@ -54,11 +58,12 @@ def barrier_exits(entries: pd.DataFrame, adj_open: pd.DataFrame, adj_high: pd.Da
         if not np.isfinite(P0) or not np.isfinite(sig):
             out.append(rec)
             continue
-        thr = m * sig * np.sqrt(h)
-        if thr_cap is not None:
-            thr = min(thr, thr_cap)   # [IMPL] width cap: high-vol names otherwise
-                                      # price barriers they can never touch
-        upper, lower = P0 * (1 + thr), P0 * (1 - thr)
+        thr_u = (m if m_up is None else m_up) * sig * np.sqrt(h)
+        thr_d = (m if m_dn is None else m_dn) * sig * np.sqrt(h)
+        if thr_cap is not None:       # [IMPL] width cap: high-vol names otherwise
+            thr_u = min(thr_u, thr_cap)   # price barriers they can never touch
+            thr_d = min(thr_d, thr_cap)
+        upper, lower = P0 * (1 + thr_u), P0 * (1 - thr_d)
         pt_level, stop_level = (upper, lower) if side > 0 else (lower, upper)
         rec.update(fill_date=dates[i0], entry_price=P0)
 
