@@ -1,9 +1,9 @@
 # ============================================================================
-# FAST book (branch aggressive-short-horizon) — h20 top-20, ~2-3 week cycle.
-# Derived from system.yaml; adopted from M17 rounds A-D on volume crimtr8kbf
-# (2026-08-30): 20-session vertical, top-20, h5+h20 members only, 30% vol
-# target, 2x gross cap, MOO-netted costs. Shorter holds cost ~4pp/yr CAGR vs
-# the aggressive h60 book — the price of the faster cycle at 30bps/round-trip.
+# FAST CASH book (branch aggressive-short-horizon) — NO borrowed money,
+# ~17-session (3-4 week) cycle. h20 vertical, top-10, h5+h20 members only,
+# 1.0x gross cap with exact recycling, MOO-netted costs. Rounds A-F
+# (2026-08-30): 15.5% CAGR / SR 0.82 / MDD -55%. The faster cycle costs
+# ~3pp/yr CAGR vs the h40 aggressive book — round-trip costs, measured.
 # ============================================================================
 # ============================================================================
 # EOD Swing & Position Trading System — single source of truth (§3)
@@ -91,7 +91,7 @@ alphas101:
 # ---- §3.4 Ensemble, meta, sleeves, regime -----------------------------------
 ensemble:
   method: mean_rank
-  members: [lgbm_h5, gru_h5, lgbm_h20, gru_h20]  # horizon-matched (rounds A/C)
+  members: [lgbm_h5, gru_h5, lgbm_h20, gru_h20]  # horizon-matched (rounds A/C/E)
   weights: equal                       # [IMPL] tunable via M17 (counted in DSR)
 meta:
   enabled: true                        # Stage 3
@@ -125,15 +125,15 @@ hmm:
 
 # ---- §3.5 Portfolio, costs, execution, compliance ---------------------------
 port:
-  selection: top_n_long                # fast book: absolute top-N
-  top_n: 20
+  selection: top_n_long                # fast cash book: absolute top-N
+  top_n: 10
   hedge: short_SPY_beta_matched
   tranches: 15                         # Stage-1 fixed hold = 15 sessions
   weighting: inverse_vol
-  single_name_cap: 0.10
+  single_name_cap: 0.20
   vol_target_ann: 0.30
   vol_target_scale_cap: 2.5            # [IMPL]
-  gross_cap: 2.0                       # Reg-T ceiling on live gross
+  gross_cap: 1.0                       # CASH ONLY — never borrow; exact recycling
   no_trade_band: 0.20                  # skip if |dw| < 20% of target or < 10 bps NAV
   no_trade_band_nav_bps: 10
   hedge_beta_window: 60                # [IMPL] rolling beta window (Q-019)
