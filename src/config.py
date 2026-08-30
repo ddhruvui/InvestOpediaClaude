@@ -50,7 +50,7 @@ class Cfg(Mapping):
 
 def load_config(path: str | os.PathLike | None = None) -> tuple[Cfg, str]:
     """Load system.yaml -> (cfg, config_hash). config_hash = SHA-256 of file bytes."""
-    p = Path(path or os.environ.get("SYSTEM_CONFIG", DEFAULT_CONFIG_PATH))
+    p = Path(path or os.environ.get("SYSTEM_CONFIG") or DEFAULT_CONFIG_PATH)
     raw = p.read_bytes()
     cfg = Cfg(yaml.safe_load(raw))
     return cfg, hashlib.sha256(raw).hexdigest()

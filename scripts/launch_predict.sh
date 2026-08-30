@@ -69,7 +69,8 @@ ENV_COMMON=$(cat <<JSON
     "MODEL_DIR": "${MODEL_DIR:-/workspace/models}",
     "REFIT": "${REFIT:-auto}",
     "SCORES_DIR_ALT": "${SCORES_DIR_ALT:-/workspace/derived/stage1}",
-    "VARIANTS_B64": "${VARIANTS_B64:-}"
+    "VARIANTS_B64": "${VARIANTS_B64:-}",
+    "SYSTEM_CONFIG": "${SYSTEM_CONFIG:-}"
 JSON
 )
 

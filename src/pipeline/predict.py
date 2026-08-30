@@ -212,7 +212,15 @@ def run_predict(m1_dir: str, eod_dir: str, out_dir: str, config_path: str | None
     # ---- ensemble -> deciles -> warm M14 -> final target row ----
     m = mask.loc[score_dates]
     ens = ensemble_rank(scores, m)
-    dec = deciles(ens, m)
+    if str(cfg.port.get("selection", "top_decile_long")) == "top_n_long":
+        # aggressive-book mode: absolute top-N concentration instead of the
+        # top decile; construct_targets keys on the value 10, so mark top-N
+        n_top = int(cfg.port.get("top_n", 20))
+        rk = ens.rank(axis=1, ascending=False, method="first")
+        dec = rk.le(n_top).astype(float).where(m) * 10.0
+        print(f"selection: top_n_long (N={n_top})", flush=True)
+    else:
+        dec = deciles(ens, m)
     beta = idx_blk["beta"].reindex(score_dates) if "beta" in idx_blk else None
     targets = construct_targets(
         dec, m, sigma32.loc[score_dates], beta, None,
