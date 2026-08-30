@@ -21,6 +21,15 @@ from src.backtest.costs import CostModel
 from src.labels.barriers import barrier_exits
 
 
+def engine_opts_from_cfg(cfg) -> dict:
+    """Config-driven engine options for the aggressive-book keys. Every key
+    absent from the config -> the pre-existing default -> bit-identical
+    behavior (the default system.yaml carries none of them)."""
+    return {"net_moo_costs": bool(cfg.cost.get("net_moo_at_open", False)),
+            "gross_cap": cfg.port.get("gross_cap"),
+            "gross_cap_exact": bool(cfg.port.get("gross_cap_exact", False))}
+
+
 def run_event_backtest(selection: pd.DataFrame, panel, sigma32: pd.DataFrame,
                        cost_model: CostModel, cfg,
                        meta_mult: pd.DataFrame | None = None,

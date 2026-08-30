@@ -44,7 +44,8 @@ PAYLOAD=$(cat <<JSON
     "RUNPOD_S3_ENDPOINT": "${RUNPOD_S3_ENDPOINT}",
     "RUNPOD_S3_REGION": "${RUNPOD_S3_REGION}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
-    "KEEP_POD": "${KEEP_POD:-}"
+    "KEEP_POD": "${KEEP_POD:-}",
+    "SYNC_SET": "${SYNC_SET:-inputs}"
   }
 }
 JSON

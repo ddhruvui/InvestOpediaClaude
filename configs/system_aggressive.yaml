@@ -135,7 +135,8 @@ port:
   single_name_cap: 0.30                # concentrated book (5 names)
   vol_target_ann: 0.20                 # protective: de-risks crises under the cash cap
   vol_target_scale_cap: 2.5            # [IMPL]
-  gross_cap: 1.0                       # CASH ONLY — never borrow; exact recycling
+  gross_cap: 1.0                       # CASH ONLY — never borrow
+  gross_cap_exact: true                # recycle capital on actual exit dates
   no_trade_band: 0.20                  # skip if |dw| < 20% of target or < 10 bps NAV
   no_trade_band_nav_bps: 10
   hedge_beta_window: 60                # [IMPL] rolling beta window (Q-019)
@@ -146,6 +147,7 @@ size:
   vol_estimator: ewma_span32           # or realized_20_60d [MAY]
 cost:
   per_trade_bps: 15                    # Stage-1 anchor; sensitivity {5, 15, 30}
+  net_moo_at_open: true                # net same-name MOO exit+entry legs
   sensitivity_bps: [5, 15, 30]
   borrow_gc_bps_yr: 50                 # GC ~0.3–1%/yr; per-name HTB override table
   slippage_bps: 0                      # -> measured (M18/M15-03, >=60 fills)

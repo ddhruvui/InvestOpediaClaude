@@ -31,6 +31,16 @@ def ensemble_rank(scores: dict[str, pd.DataFrame], mask: pd.DataFrame,
     return acc.where(mask)
 
 
+def select_long(ens: pd.DataFrame, mask: pd.DataFrame, cfg) -> pd.DataFrame:
+    """Config-driven long selection (bool frame). Default `top_decile_long`
+    reproduces deciles(...).eq(10) exactly; `top_n_long` takes the absolute
+    top cfg.port.top_n names per day (aggressive concentrated books)."""
+    if str(cfg.port.get("selection", "top_decile_long")) == "top_n_long":
+        rk = ens.rank(axis=1, ascending=False, method="first")
+        return rk.le(int(cfg.port.get("top_n", 20))) & mask
+    return deciles(ens, mask).eq(10)
+
+
 def deciles(rank_frame: pd.DataFrame, mask: pd.DataFrame, n: int = 10) -> pd.DataFrame:
     """Per-day decile of ensemble_rank over the masked universe; 10 = top (M10-04)."""
     x = rank_frame.where(mask)

@@ -25,6 +25,21 @@ else
   SRC="s3://${SRC_VOLUME_ID}"
   EP=(--endpoint-url "$RUNPOD_S3_ENDPOINT" --region "${RUNPOD_S3_REGION:-eu-ro-1}")
   ec=0
+  if [ "${SYNC_SET:-inputs}" = "raw" ]; then
+    # RAW MODE (adoption rebuild): copy ONLY the downloaded vendor trees +
+    # the DSR trials ledger. Everything derived (m1, m1x, scores, models)
+    # is rebuilt from scratch on this volume by the pipeline itself.
+    for tree in data data_nasdaq data_tiingo data_borrow data_calendar                 data_finbert data_quality ledger; do
+      echo ">> $SRC/$tree/ -> /workspace/$tree/"
+      timeout 14400 aws s3 sync "${EP[@]}" --only-show-errors \
+        "$SRC/$tree" "/workspace/$tree" --exclude 'logs/*' || ec=1
+    done
+    echo "---- volume contents after raw sync ----"
+    du -sh /workspace/* 2>/dev/null
+    echo "sync done ec=$ec at $(date -u +%FT%TZ)"
+    sync 2>/dev/null
+    [ "${KEEP_POD:-}" = "1" ] && { echo "KEEP_POD=1 — not terminating"; sleep infinity; }
+  else
   echo ">> $SRC/m1/ -> /workspace/m1/"
   timeout 3600 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/m1" /workspace/m1 || ec=1
   echo ">> $SRC/m1x/ -> /workspace/m1x/"
@@ -43,6 +58,7 @@ else
   echo "---- volume contents after sync ----"
   du -sh /workspace/* 2>/dev/null
   echo "sync done ec=$ec at $(date -u +%FT%TZ)"
+  fi
 fi
 sync 2>/dev/null
 

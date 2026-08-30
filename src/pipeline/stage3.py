@@ -20,9 +20,9 @@ import pandas as pd
 from src.config import load_config, git_sha
 from src.pipeline.common import prepare
 from src.models.lgbm import LGBMHead
-from src.ensemble.rank import ensemble_rank, deciles
+from src.ensemble.rank import ensemble_rank, deciles, select_long
 from src.backtest.costs import CostModel
-from src.backtest.engines.barriers_event import run_event_backtest
+from src.backtest.engines.barriers_event import engine_opts_from_cfg, run_event_backtest
 from src.meta.gate import (candidates_from_deciles, meta_context, meta_outcomes,
                            train_meta, meta_multiplier, META_FEATURES)
 from src.primitives.monthly import mom_12_1
@@ -97,17 +97,20 @@ def run_stage3(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
     # targeting scales it by min(target/EWMA vol of the pre-run book, cap),
     # causally (pre-run pass -> scale -> final run).
     from src.portfolio.construct import vol_target_scale
-    sel_ungated = dec.eq(10)
+    # selection + engine options are config-driven; the default system.yaml
+    # reproduces the original decile book bit-for-bit (keys absent -> defaults)
+    eng_kw = engine_opts_from_cfg(cfg)
+    sel_ungated = select_long(ens, mask.loc[test_dates], cfg)
     gm_series = gm.reindex(test_dates).fillna(1.0)
     pre = run_event_backtest(sel_ungated, panel, sigma32, cm, cfg,
                              day_budget_mult=gm_series,
-                             account_equity=account_equity)
+                             account_equity=account_equity, **eng_kw)
     vt = vol_target_scale(pre["daily_net"], float(cfg.port.vol_target_ann),
                           float(cfg.port.vol_target_scale_cap))
     budget = (gm_series * vt.reindex(test_dates).fillna(1.0)).clip(lower=0.0)
     res_ungated = run_event_backtest(sel_ungated, panel, sigma32, cm, cfg,
                                      day_budget_mult=budget,
-                                     account_equity=account_equity)
+                                     account_equity=account_equity, **eng_kw)
 
     # ---------------- meta gate, causally per fold (M11-04) ----------------
     meta_mult = pd.DataFrame(np.nan, index=test_dates, columns=panel.tickers)
@@ -154,7 +157,7 @@ def run_stage3(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
     res_gated = run_event_backtest(sel_gated, panel, sigma32, cm,
                                    cfg, meta_mult=mm_filled,
                                    day_budget_mult=budget,
-                                   account_equity=account_equity)
+                                   account_equity=account_equity, **eng_kw)
 
     # ---------------- M11-02 adoption gate ----------------
     s_un, s_gt = sharpe(res_ungated["daily_net"]), sharpe(res_gated["daily_net"])
@@ -209,8 +212,9 @@ def run_stage3(m1_dir: str, eod_dir: str, out_dir: str, scores_dir: str,
                 gd = dates[bounds[g]:bounds[g + 1]]
                 segs.append(split_scores[ci].reindex(gd))
             path_ens = pd.concat(segs)
-            pdec = deciles(path_ens, mask.reindex(path_ens.index))
-            pres = run_event_backtest(pdec.eq(10), panel, sigma32, cm, cfg)
+            psel = select_long(path_ens, mask.reindex(path_ens.index)
+                               .fillna(False), cfg)
+            pres = run_event_backtest(psel, panel, sigma32, cm, cfg, **eng_kw)
             path_stats.append({"path": pi, "sharpe": sharpe(pres["daily_net"]),
                                "mdd": max_drawdown(pres["daily_net"]),
                                "n_trades": pres["n_trades"]})
