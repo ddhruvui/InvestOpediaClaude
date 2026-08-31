@@ -221,7 +221,11 @@ def run_predict(m1_dir: str, eod_dir: str, out_dir: str, config_path: str | None
         print(f"selection: top_n_long (N={n_top})", flush=True)
     else:
         dec = deciles(ens, m)
-    beta = idx_blk["beta"].reindex(score_dates) if "beta" in idx_blk else None
+    hedge_mode = str(cfg.port.get("hedge", "short_SPY_beta_matched"))
+    beta = idx_blk["beta"].reindex(score_dates) \
+        if "beta" in idx_blk and hedge_mode != "none" else None
+    if hedge_mode == "none":
+        print("hedge: none (cash book — no SPY short leg)", flush=True)
     targets = construct_targets(
         dec, m, sigma32.loc[score_dates], beta, None,
         tranches=int(cfg.port.tranches), single_name_cap=float(cfg.port.single_name_cap),

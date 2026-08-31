@@ -129,7 +129,7 @@ hmm:
 port:
   selection: top_n_long                # aggressive cash: absolute top-N book
   top_n: 5                             # names held (winner of rounds A-F)
-  hedge: short_SPY_beta_matched
+  hedge: none                          # cash book — unhedged (hedging kills it, measured)
   tranches: 15                         # Stage-1 fixed hold = 15 sessions
   weighting: inverse_vol
   single_name_cap: 0.30                # concentrated book (5 names)
