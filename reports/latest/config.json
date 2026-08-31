@@ -1,5 +1,5 @@
 {
- "config_hash": "95024ffb26b69ce6dddc94f40332c5a2441b987e1a762f0212ffcc981a645837",
+ "config_hash": "b6fd182d9d7c0d8c317030c41fba4b300a29769bd700a726f910bf40a5d9669c",
  "cost": {
   "per_trade_bps": 15,
   "borrow_gc_bps_yr": 50,
@@ -7,12 +7,12 @@
  },
  "barrier": {
   "m": 1.5,
-  "h_days": 60,
+  "h_days": 40,
   "tie_break": "stop_first"
  },
  "port": {
-  "single_name_cap": 0.03,
-  "vol_target_ann": 0.12,
+  "single_name_cap": 0.3,
+  "vol_target_ann": 0.2,
   "tranches": 15
  },
  "pdt": {

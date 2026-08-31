@@ -1,21 +1,21 @@
 {
- "generated_utc": "2026-08-29T05:31:16+00:00",
+ "generated_utc": "2026-08-31T04:53:45+00:00",
  "stamp": {
-  "config_hash": "95024ffb26b69ce6dddc94f40332c5a2441b987e1a762f0212ffcc981a645837",
-  "data_snapshot_id": "c8c93766079d9cff",
+  "config_hash": "7343c7003fddd4c622b860bb1dc3c1c13c45d44490c452968a49ae966024d512",
+  "data_snapshot_id": "6a7afbdf31bb73da",
   "git_sha": "unknown",
   "seed": 20260717
  },
  "universe": {
   "names": 3169,
-  "avg_daily": 805.81773399
+  "avg_daily": 805.82681981
  },
  "gates": {
   "verdict": "ITERATE",
   "checks": [
    {
     "id": "G-11 kill: Rank IC",
-    "value": 0.03393658,
+    "value": 0.0303963,
     "threshold": 0.02,
     "op": ">=",
     "pass": true,
@@ -23,7 +23,7 @@
    },
    {
     "id": "G-11 kill: net Sharpe",
-    "value": 0.81987886,
+    "value": 0.78605404,
     "threshold": 0.5,
     "op": ">=",
     "pass": true,
@@ -31,15 +31,15 @@
    },
    {
     "id": "G-11 advance: net Sharpe",
-    "value": 0.81987886,
+    "value": 0.78605404,
     "threshold": 0.8,
     "op": ">=",
-    "pass": true,
+    "pass": false,
     "note": "paper-trading bar"
    },
    {
     "id": "G-11 advance: max drawdown",
-    "value": -0.24432058,
+    "value": -0.43804239,
     "threshold": -0.15,
     "op": ">",
     "pass": false,
@@ -47,7 +47,7 @@
    },
    {
     "id": "G-08 beat SPY buy-and-hold",
-    "value": 0.81987886,
+    "value": 0.78605404,
     "threshold": 0.6236376,
     "op": ">",
     "pass": true,
@@ -55,8 +55,8 @@
    },
    {
     "id": "G-08 beat 12-1 momentum",
-    "value": 0.81987886,
-    "threshold": 0.12269442,
+    "value": 0.78605404,
+    "threshold": 0.12269459,
     "op": ">",
     "pass": true,
     "note": "free baseline"
@@ -65,99 +65,99 @@
  },
  "book": {
   "engine": "event (M5.2 barrier exits, regime + vol targeting)",
-  "sharpe_net": 0.81987886,
-  "mdd": -0.24432058,
-  "n_trades": 376573,
-  "avg_hold_sessions": 51.28392901,
+  "sharpe_net": 0.78605404,
+  "mdd": -0.43804239,
+  "n_trades": 23370,
+  "avg_hold_sessions": 34.17124519,
   "exit_mix": {
-   "vertical": 249820,
-   "upper": 77379,
-   "lower": 48047,
-   "censored": 1327
+   "vertical": 15622,
+   "upper": 4803,
+   "lower": 2885,
+   "censored": 60
   },
-  "ann_return": 0.09465047,
-  "ann_vol": 0.11544445,
+  "ann_return": 0.12951315,
+  "ann_vol": 0.16476367,
   "meta_gate": {
    "adopted": false,
-   "sharpe": 0.62402388,
-   "n_trades": 242541,
-   "mdd": -0.25977276,
-   "turnover_cut": 0.35592568,
+   "sharpe": 0.69748021,
+   "n_trades": 13933,
+   "mdd": -0.29579638,
+   "turnover_cut": 0.4038083,
    "rule": "M11-02: ships only if turnover falls materially at equal-or-better net Sharpe"
   },
   "dsr": {
-   "DSR": 0.99997165,
-   "SR_daily": 0.05164751,
+   "DSR": 0.99996892,
+   "SR_daily": 0.04951675,
    "SR_star": 0.0,
-   "T": 6341,
-   "N": 354,
-   "skew": -0.72077377,
-   "kurtosis_raw": 10.08703427,
+   "T": 6671,
+   "N": 610,
+   "skew": -0.32468695,
+   "kurtosis_raw": 7.1708,
    "caveat": "N counts the trials ledger visible to the run that produced this book. A ledger that does not persist across runs undercounts N and under-deflates the Sharpe (G-09)."
   }
  },
  "fast_path": {
-  "sharpe_net": -0.09630115,
-  "mdd": -0.37597825,
-  "turnover_month": 0.75592441,
+  "sharpe_net": -0.18103332,
+  "mdd": -0.6841607,
+  "turnover_month": 0.7296446,
   "note": "Stage-1 fixed 15-tranche rotation (no barrier exits)"
  },
  "ic": {
-  "IC": 0.02805293,
-  "ICIR": 0.23455106,
-  "RankIC": 0.03393658,
-  "RankICIR": 0.27739824,
+  "IC": 0.02493356,
+  "ICIR": 0.21444861,
+  "RankIC": 0.0303963,
+  "RankICIR": 0.25779384,
   "n_days": 4788
  },
  "members": [
   {
    "name": "lgbm_h20",
-   "IC": 0.01767856,
-   "RankIC": 0.02584516,
-   "ICIR": 0.1735348,
-   "RankICIR": 0.24363233
+   "IC": 0.0166561,
+   "RankIC": 0.02497989,
+   "ICIR": 0.15727457,
+   "RankICIR": 0.23025733
   },
   {
    "name": "lgbm_h60",
-   "IC": 0.02040514,
-   "RankIC": 0.02402904,
-   "ICIR": 0.1893079,
-   "RankICIR": 0.21058747
-  },
-  {
-   "name": "gru_h60",
-   "IC": 0.01926257,
-   "RankIC": 0.02250292,
-   "ICIR": 0.16460297,
-   "RankICIR": 0.19047116
+   "IC": 0.02115965,
+   "RankIC": 0.02496623,
+   "ICIR": 0.19652991,
+   "RankICIR": 0.21954958
   },
   {
    "name": "lgbm_h5",
-   "IC": 0.01768771,
-   "RankIC": 0.02186916,
-   "ICIR": 0.14822414,
-   "RankICIR": 0.17601829
+   "IC": 0.01781584,
+   "RankIC": 0.02315141,
+   "ICIR": 0.15005209,
+   "RankICIR": 0.18621822
+  },
+  {
+   "name": "gru_h60",
+   "IC": 0.01806171,
+   "RankIC": 0.02248142,
+   "ICIR": 0.15310542,
+   "RankICIR": 0.19413069
   },
   {
    "name": "gru_h5",
-   "IC": 0.01946507,
-   "RankIC": 0.0201368,
-   "ICIR": 0.14951048,
-   "RankICIR": 0.14631457
+   "IC": 0.01853417,
+   "RankIC": 0.01992284,
+   "ICIR": 0.14042404,
+   "RankICIR": 0.14324121
   },
   {
    "name": "gru_h20",
-   "IC": 0.01767235,
-   "RankIC": 0.0178738,
-   "ICIR": 0.16447779,
-   "RankICIR": 0.16108026
+   "IC": 0.01591499,
+   "RankIC": 0.01711861,
+   "ICIR": 0.14217264,
+   "RankICIR": 0.14697294
   },
   {
    "name": "cnn_I5R20",
-   "IC": 0.00196277,
-   "RankIC": 0.00289104,
-   "ICIR": 0.03416065,
-   "RankICIR": 0.04702662
+   "IC": 0.00148493,
+   "RankIC": 0.00254418,
+   "ICIR": 0.02575809,
+   "RankICIR": 0.04153705
   }
  ],
  "member_admission_floor": 0.02,
@@ -170,41 +170,41 @@
    "n_days": 4787
   },
   "mom_12_1": {
-   "sharpe_net": 0.12269442,
-   "ann_return": 0.03532851,
-   "ann_vol": 0.28793904,
-   "mdd": -0.78770254,
+   "sharpe_net": 0.12269459,
+   "ann_return": 0.03532848,
+   "ann_vol": 0.28793832,
+   "mdd": -0.78770492,
    "n_days": 4787
   },
   "alpha_beta_vs_spy": {
-   "alpha_ann": -0.01562179,
-   "beta": 0.05587263
+   "alpha_ann": -0.0356031,
+   "beta": 0.05481149
   },
   "alpha_beta_vs_mom": {
-   "alpha_ann": -0.00875175,
-   "beta": -0.00549726
+   "alpha_ann": -0.0276272,
+   "beta": -0.04038859
   }
  },
  "sensitivity": {
   "5": {
-   "sharpe_net": 0.28716677,
-   "ann_return": 0.02668329,
-   "ann_vol": 0.09291913,
-   "mdd": -0.23983085,
+   "sharpe_net": 0.19449168,
+   "ann_return": 0.03121336,
+   "ann_vol": 0.16048688,
+   "mdd": -0.45770868,
    "n_days": 4787
   },
   "15": {
-   "sharpe_net": -0.09630115,
-   "ann_return": -0.00894596,
-   "ann_vol": 0.09289571,
-   "mdd": -0.37597825,
+   "sharpe_net": -0.18103332,
+   "ann_return": -0.02905407,
+   "ann_vol": 0.16049016,
+   "mdd": -0.6841607,
    "n_days": 4787
   },
   "30": {
-   "sharpe_net": -0.67218407,
-   "ann_return": -0.06242252,
-   "ann_vol": 0.09286521,
-   "mdd": -0.75010806,
+   "sharpe_net": -0.74428856,
+   "ann_return": -0.1194765,
+   "ann_vol": 0.16052443,
+   "mdd": -0.93277076,
    "n_days": 4787
   }
  },
@@ -212,41 +212,41 @@
   "paths": [
    {
     "path": 0,
-    "sharpe": 1.02911892,
-    "mdd": -0.47866543,
-    "n_trades": 537347
+    "sharpe": 1.02742726,
+    "mdd": -0.56625571,
+    "n_trades": 31953
    },
    {
     "path": 1,
-    "sharpe": 1.24493256,
-    "mdd": -0.31313351,
-    "n_trades": 529476
+    "sharpe": 1.04104288,
+    "mdd": -0.49708533,
+    "n_trades": 28942
    },
    {
     "path": 2,
-    "sharpe": 0.76648292,
-    "mdd": -0.61170276,
-    "n_trades": 533573
+    "sharpe": 0.89722721,
+    "mdd": -0.55306988,
+    "n_trades": 29476
    },
    {
     "path": 3,
-    "sharpe": 1.16104016,
-    "mdd": -0.31215822,
-    "n_trades": 534812
+    "sharpe": 1.18080394,
+    "mdd": -0.50475383,
+    "n_trades": 29867
    },
    {
     "path": 4,
-    "sharpe": 1.25222528,
-    "mdd": -0.29550211,
-    "n_trades": 532227
+    "sharpe": 1.31376981,
+    "mdd": -0.49091205,
+    "n_trades": 30099
    }
   ],
-  "sharpe_median": 1.16104016,
-  "mdd_worst": -0.61170276
+  "sharpe_median": 1.04104288,
+  "mdd_worst": -0.56625571
  },
  "ensemble_vs_best_single": {
-  "ensemble_rank_ic": 0.03393658,
-  "best_single_rank_ic": 0.02584516,
+  "ensemble_rank_ic": 0.0303963,
+  "best_single_rank_ic": 0.02497989,
   "ensemble_geq_best": true
  },
  "caveat": "Research output evaluated under blueprint v1.0.1 gates. Not financial advice."

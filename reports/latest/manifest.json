@@ -1,6 +1,6 @@
 {
- "built_utc": "2026-08-29T05:31:16+00:00",
- "source_dir": "derived",
+ "built_utc": "2026-08-31T04:53:45+00:00",
+ "source_dir": "derived_fresh",
  "sections": {
   "summary": {
    "members": "stage2_report.json",
@@ -8,20 +8,20 @@
    "cpcv": "stage3_final_report.json"
   },
   "equity": {
-   "points": 1526
+   "points": 1636
   },
   "suggestions": {
    "as_of": "2026-08-28",
-   "n": 231
+   "n": 23
   },
   "config": {
-   "config_hash": "95024ffb26b69ce6dddc94f40332c5a2441b987e1a762f0212ffcc981a645837"
+   "config_hash": "b6fd182d9d7c0d8c317030c41fba4b300a29769bd700a726f910bf40a5d9669c"
   },
   "calendar": {
-   "sessions": 85
+   "sessions": 83
   },
   "trades": {
-   "n_total": 376573,
+   "n_total": 23370,
    "sampled": 4000
   }
  }
