@@ -65,6 +65,23 @@ bit-identical, 25/25 tests pass): `m_up`/`m_dn`, `net_moo_costs`,
 `cost_bps`, `sent_gate`, `fin_bps_yr`, `vt`/`vt_cap`, `gc_exact`, plus
 CAGR/subperiod/per-year/gross metrics per variant.
 
+## From-scratch validation (2026-08-31, branch `aggressive-adoption`)
+
+Volume cleared; ONLY raw vendor trees copied from the production volume (read-
+only); every stage rerun under `SYSTEM_CONFIG=configs/system_aggressive.yaml`:
+validate → m1 (**byte-identical to production**) → m1x → stage1 (RankIC 0.027)
+→ stage2 (RankIC 0.030, CNN excluded as always) → stage3 → predict.
+
+Fresh book vs research: **Sharpe 0.917 vs 0.916** (active window), CAGR 16.9%
+vs 18.8% (fresh models on a newer snapshot; documented ±0.1-SR band), MDD
+−43.8% vs −50.9% (shallower), last-3y 29.9%/yr at SR 1.45. CPCV median 1.04;
+DSR 1.00 at N=610. Meta gate again not adopted. predict emits top-5 cash
+suggestions, gross 0.99, no hedge leg (`port.hedge: none`).
+
+Caveats: stage3_report's headline sharpe (0.786) is diluted by pre-2007 flat
+days — recompute on the active window; single-name cap is per-ticker, not
+per-issuer (GOOGN+GOOGM held together ≈30%).
+
 ## Before real money
 
 Blueprint's own path applies, doubly at 5-name size: paper-trade 3–6 months
