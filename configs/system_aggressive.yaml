@@ -1,11 +1,11 @@
 # ============================================================================
-# AGGRESSIVE CASH book (branch aggressive-short-horizon) — NO borrowed money.
+# ADOPTED 2026-08-31: the AGGRESSIVE CASH book is the production config.
 # h40 vertical, top-5 concentration, 20% protective vol target, hard 1.0x
-# gross cap with exact capital recycling, MOO-netted costs. Adopted from M17
-# rounds A-F on volume crimtr8kbf (2026-08-30): 18.8% CAGR / SR 0.92 /
-# MDD -51% on the 19y walk-forward; ~34-session average hold.
-# Run via SYSTEM_CONFIG=configs/system_aggressive.yaml. NOT the production
-# config; never point it at the production volume.
+# gross cap with exact capital recycling, MOO-netted costs, no hedge, never
+# borrows. M17 rounds A-G (91 variants) + full from-scratch rebuild: research
+# 18.8% CAGR / SR 0.92; rebuild 16.9% / SR 0.92 / MDD -44%; last-3y ~30-38%.
+# Previous top-decile h60 registry: git history (pre-adoption system.yaml).
+# configs/system_aggressive.yaml is kept as a byte-identical alias.
 # ============================================================================
 # ============================================================================
 # EOD Swing & Position Trading System — single source of truth (§3)
