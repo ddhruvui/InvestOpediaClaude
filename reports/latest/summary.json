@@ -1,5 +1,5 @@
 {
- "generated_utc": "2026-08-31T04:53:45+00:00",
+ "generated_utc": "2026-09-01T01:08:31+00:00",
  "stamp": {
   "config_hash": "7343c7003fddd4c622b860bb1dc3c1c13c45d44490c452968a49ae966024d512",
   "data_snapshot_id": "6a7afbdf31bb73da",
@@ -212,37 +212,37 @@
   "paths": [
    {
     "path": 0,
-    "sharpe": 1.02742726,
-    "mdd": -0.56625571,
-    "n_trades": 31953
+    "sharpe": 1.02911892,
+    "mdd": -0.47866543,
+    "n_trades": 537347
    },
    {
     "path": 1,
-    "sharpe": 1.04104288,
-    "mdd": -0.49708533,
-    "n_trades": 28942
+    "sharpe": 1.24493256,
+    "mdd": -0.31313351,
+    "n_trades": 529476
    },
    {
     "path": 2,
-    "sharpe": 0.89722721,
-    "mdd": -0.55306988,
-    "n_trades": 29476
+    "sharpe": 0.76648292,
+    "mdd": -0.61170276,
+    "n_trades": 533573
    },
    {
     "path": 3,
-    "sharpe": 1.18080394,
-    "mdd": -0.50475383,
-    "n_trades": 29867
+    "sharpe": 1.16104016,
+    "mdd": -0.31215822,
+    "n_trades": 534812
    },
    {
     "path": 4,
-    "sharpe": 1.31376981,
-    "mdd": -0.49091205,
-    "n_trades": 30099
+    "sharpe": 1.25222528,
+    "mdd": -0.29550211,
+    "n_trades": 532227
    }
   ],
-  "sharpe_median": 1.04104288,
-  "mdd_worst": -0.56625571
+  "sharpe_median": 1.16104016,
+  "mdd_worst": -0.61170276
  },
  "ensemble_vs_best_single": {
   "ensemble_rank_ic": 0.0303963,
