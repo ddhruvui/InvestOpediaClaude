@@ -4,8 +4,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const REPORTS_DIR = process.env.REPORTS_DIR
-  || path.resolve(process.cwd(), '../../reports/latest');
+/** Branch of the repo this backend lives in (worktree-aware), or null. */
+function currentBranch() {
+  try {
+    let gitPath = path.resolve(process.cwd(), '../../.git');
+    if (fs.statSync(gitPath).isFile()) {          // worktree: .git is a pointer file
+      const m = fs.readFileSync(gitPath, 'utf8').match(/^gitdir: (.+)$/m);
+      if (m) gitPath = path.resolve(path.dirname(gitPath), m[1].trim());
+    }
+    const head = fs.readFileSync(path.join(gitPath, 'HEAD'), 'utf8').trim();
+    return head.match(/^ref: refs\/heads\/(.+)$/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// main serves the universal whole-market bundle (reports/latest); the top-150
+// experiment branch serves its own restricted-universe bundle. Explicit
+// REPORTS_DIR always wins. Checked once at startup — restart after a checkout.
+const BRANCH_BUNDLE = { top150: 'top150', top200: 'top150' };
+
+function defaultReportsDir() {
+  const base = path.resolve(process.cwd(), '../../reports');
+  const bundle = BRANCH_BUNDLE[currentBranch()];
+  if (bundle && fs.existsSync(path.join(base, bundle, 'suggestions.json'))) {
+    return path.join(base, bundle);
+  }
+  return path.join(base, 'latest');
+}
+
+const REPORTS_DIR = process.env.REPORTS_DIR || defaultReportsDir();
 
 const cache = new Map();
 
