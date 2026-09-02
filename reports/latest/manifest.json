@@ -1,5 +1,5 @@
 {
- "built_utc": "2026-09-01T01:08:31+00:00",
+ "built_utc": "2026-09-02T03:36:22+00:00",
  "source_dir": "derived",
  "sections": {
   "summary": {
@@ -11,14 +11,14 @@
    "points": 1636
   },
   "suggestions": {
-   "as_of": "2026-08-31",
-   "n": 15
+   "as_of": "2026-09-01",
+   "n": 19
   },
   "config": {
    "config_hash": "f4868116a77ffdd3dcc87e1f6e378e0e94977d21f23ec084fb01fd01f469bb84"
   },
   "calendar": {
-   "sessions": 84
+   "sessions": 85
   },
   "trades": {
    "n_total": 23370,
