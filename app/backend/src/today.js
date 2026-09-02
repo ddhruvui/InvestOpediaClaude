@@ -63,10 +63,21 @@ export function ticket(now = new Date()) {
   const cfg = reports.config();
   if (!sug) return { session: ctx, error: 'no suggestions in the report bundle' };
 
+  const book = paperState();
+  const nav = Number(book.nav) > 0 ? Number(book.nav) : 100000;
   const held = new Map();
-  for (const p of paperState().positions) {
+  for (const p of book.positions) {
     if (p.status === 'open' || p.status === 'ordered') held.set(p.ticker, p);
   }
+
+  const cal = reports.readCalendar()?.sessions ?? [];
+  const iNextOpen = ctx.next_open ? cal.indexOf(ctx.next_open) : -1;
+  // M5.2: vertical exit is a MOO at fill + h + 1 sessions. For a not-yet-held
+  // name the fill session IS the next open; for a held one it is fill_date.
+  const sellByFrom = (fillDate, h) => {
+    const i = fillDate == null ? iNextOpen : cal.indexOf(fillDate);
+    return i >= 0 ? cal[i + h + 1] ?? null : null;
+  };
 
   const target = new Map();
   for (const r of sug.buys_or_increases || []) target.set(r.ticker, r);
@@ -75,6 +86,16 @@ export function ticket(now = new Date()) {
   const holds = [];
   for (const [ticker, r] of target) {
     const pos = held.get(ticker);
+    const h = r.max_hold_sessions ?? cfg.barrier.h_days;
+    // Plain-terms sizing: weight × NAV → whole shares at the last close, and
+    // the barrier %s → the prices a broker ticket actually wants. Approximate
+    // until the real fill (barriers hang off the fill, not this close).
+    const px = r.last_close > 0 ? r.last_close : null;
+    const dollars = r.target_weight != null ? r.target_weight * nav : null;
+    const shares = px && dollars != null ? Math.floor(dollars / px) : null;
+    // A ±40%+ barrier is unreachable inside h sessions — the trade is
+    // time-exit only, so trigger prices would be nonsense (even negative).
+    const unreachable = Math.abs(r.stop_pct ?? 0) > 40;
     const row = {
       ticker,
       target_weight: r.target_weight,
@@ -82,21 +103,48 @@ export function ticket(now = new Date()) {
       last_close: r.last_close,
       stop_pct: r.stop_pct,
       profit_take_pct: r.profit_take_pct,
-      max_hold_sessions: r.max_hold_sessions,
-      barrier_unreachable: Math.abs(r.stop_pct ?? 0) > 40,
+      max_hold_sessions: h,
+      shares,
+      // 0 whole shares (price > slot) still costs the slot in fractional terms
+      est_cost: shares ? shares * px : dollars,
+      stop_price: !unreachable && px && r.stop_pct != null
+        ? px * (1 + r.stop_pct / 100) : null,
+      profit_take_price: !unreachable && px && r.profit_take_pct != null
+        ? px * (1 + r.profit_take_pct / 100) : null,
+      barrier_unreachable: unreachable,
     };
-    if (!pos) buys.push({ ...row, action: 'BUY', reason: 'new — not held' });
-    else holds.push({ ...row, action: 'HOLD', position_id: pos.id, status: pos.status,
-                      fill_price: pos.fill_price ?? null });
+    if (!pos) {
+      buys.push({ ...row, action: 'BUY', reason: 'new — not held',
+                  sell_by_date: sellByFrom(null, h) });
+    } else {
+      holds.push({
+        ...row, action: 'HOLD', position_id: pos.id, status: pos.status,
+        fill_price: pos.fill_price ?? null,
+        // A filled position's barriers are the real ones from the fill.
+        stop_price: pos.stop_price ?? row.stop_price,
+        profit_take_price: pos.profit_take_price ?? row.profit_take_price,
+        sell_by_date: sellByFrom(pos.fill_date ?? null, pos.max_hold_sessions ?? h),
+      });
+    }
   }
 
   // Held but no longer wanted, plus anything the source file explicitly exits.
+  // A sold name is outside the target book, so its close must be scraped from
+  // whichever suggestion section still prices it (sells carry their own
+  // last_close in files written after 2026-09-02).
+  const closeOf = new Map();
+  for (const section of [sug.buys_or_increases, sug.holds, sug.sells_or_exits]) {
+    for (const r of section || []) {
+      if (r.last_close != null) closeOf.set(r.ticker, r.last_close);
+    }
+  }
   const sells = [];
   for (const [ticker, pos] of held) {
     if (!target.has(ticker)) {
       sells.push({
         ticker, action: 'SELL', position_id: pos.id, status: pos.status,
         fill_price: pos.fill_price ?? null, target_weight: 0,
+        last_close: closeOf.get(ticker) ?? null,
         reason: 'dropped out of the target book',
       });
     }
@@ -105,19 +153,18 @@ export function ticket(now = new Date()) {
     if (!sells.some((x) => x.ticker === r.ticker)) {
       sells.push({ ticker: r.ticker, action: 'SELL', target_weight: 0,
                    current_weight: r.current_weight,
+                   last_close: closeOf.get(r.ticker) ?? null,
                    reason: 'model flagged an exit' });
     }
   }
 
   // Barrier obligations on open positions: the vertical exit is a scheduled MOO
   // at fill + h sessions (M5.2) — it is due regardless of what the model says.
-  const cal = reports.readCalendar()?.sessions ?? [];
   const dueExits = [];
   for (const pos of held.values()) {
     if (pos.status !== 'open' || !pos.fill_date) continue;
-    const i = cal.indexOf(pos.fill_date);
     const h = pos.max_hold_sessions ?? cfg.barrier.h_days;
-    const verticalDate = i >= 0 ? cal[i + h + 1] ?? null : null;
+    const verticalDate = sellByFrom(pos.fill_date, h);
     if (verticalDate && ctx.next_open && verticalDate <= ctx.next_open) {
       dueExits.push({
         ticker: pos.ticker, position_id: pos.id, action: 'EXIT (time barrier)',
@@ -143,6 +190,12 @@ export function ticket(now = new Date()) {
     },
     counts: { buy: buys.length, sell: sells.length, hold: holds.length,
               due_exit: dueExits.length, held_total: held.size },
+    // Sizing basis for the plain-English view: everything above is scaled to
+    // the paper book's NAV, so the page can say "shares" and "dollars".
+    plan: {
+      nav,
+      invest_total: buys.reduce((a, r) => a + (r.est_cost ?? 0), 0),
+    },
     buys, sells, holds, due_exits: dueExits,
     gate_warning: 'The G-11 gates on this book return ITERATE — research output, '
       + 'not a recommendation to trade.',

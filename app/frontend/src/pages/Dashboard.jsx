@@ -1,21 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { LineChart, BarChart, fmtNum, fmtPct, fmtInt, fmtSignedPct } from '../components/Chart.jsx';
-import { Card, StatTile, Badge, Delta, Loading, ErrorBox } from '../components/Bits.jsx';
+import { Card, StatTile, Badge, Delta, Loading, ErrorBox, useSort, Th } from '../components/Bits.jsx';
+
+const EMPTY = [];
 
 const VERDICT = {
-  ADVANCE: ['good', '✓', 'Advance to paper trading',
-    'Every G-11 ship criterion is met. The blueprint\'s next step is 3–6 months of '
-    + 'paper trading measuring open-print slippage before any real capital.'],
-  ITERATE: ['warn', '⚠', 'Iterate — not ready to trade',
-    'The kill floor is cleared, so the signal is real, but the book has not reached '
-    + 'the advance bar. Per the blueprint you iterate on features and members — '
-    + 'never on the thresholds.'],
-  KILL: ['bad', '✕', 'Kill — do not trade',
-    'Rank IC or net Sharpe is below the G-11 minimum. This configuration does not ship.'],
-  'LEAKAGE-AUDIT': ['bad', '⚠', 'Sanity ceiling breached — leakage audit required',
-    'Results are too good to be true (Sharpe > 2.0 or drawdown < 5%). The blueprint '
-    + 'routes this to the leakage checklist instead of the results deck.'],
+  ADVANCE: ['good', '✓', 'Ready for practice trading',
+    'Every quality check passed. The next step is 3–6 months of practice (paper) '
+    + 'trading to see how real fills behave — still no real money yet.'],
+  ITERATE: ['warn', '⚠', 'Not ready to trade — keep improving',
+    'The strategy shows a real signal, but it is not strong enough to pass the '
+    + 'ship criteria. The rules say: improve the model, never loosen the bar.'],
+  KILL: ['bad', '✕', 'Do not trade — no real edge',
+    'Prediction accuracy or the risk-adjusted score is below the minimum. This '
+    + 'version of the strategy does not ship.'],
+  'LEAKAGE-AUDIT': ['bad', '⚠', 'Too good to be true — check for errors',
+    'Results this strong (Sharpe > 2.0 or drawdown < 5%) usually mean the model '
+    + 'accidentally peeked at the future. It goes to an error audit, not to trading.'],
 };
 
 export default function Dashboard() {
@@ -25,6 +27,21 @@ export default function Dashboard() {
       .then(([summary, equity]) => setD({ summary, equity }))
       .catch((error) => setD({ error }));
   }, []);
+
+  const checkSort = useSort(d.summary?.gates?.checks ?? EMPTY);
+  const baselineRows = useMemo(() => {
+    const b = d.summary?.book || {};
+    const bl0 = d.summary?.baselines || {};
+    return [
+      { name: 'This strategy', color: 'var(--series-1)', strong: true,
+        sharpe: b.sharpe_net, ann: b.ann_return, mdd: b.mdd },
+      { name: 'SPY buy & hold', color: 'var(--series-2)',
+        sharpe: bl0.spy_bh?.sharpe_net, ann: bl0.spy_bh?.ann_return, mdd: bl0.spy_bh?.mdd },
+      { name: 'Basic momentum recipe', color: 'var(--series-3)',
+        sharpe: bl0.mom_12_1?.sharpe_net, ann: bl0.mom_12_1?.ann_return, mdd: bl0.mom_12_1?.mdd },
+    ];
+  }, [d.summary]);
+  const blSort = useSort(baselineRows);
 
   if (d.loading) return <Loading what="report" />;
   if (d.error) {
@@ -47,7 +64,7 @@ export default function Dashboard() {
   const cagr = equity && eqYears > 0 ? equity.final_equity ** (1 / eqYears) - 1 : null;
 
   const equitySeries = equity && [{
-    name: 'Deployed book (barrier exits)',
+    name: 'This strategy, after costs',
     color: 'var(--series-1)',
     points: equity.series.map((p) => ({ x: p.date.slice(0, 7), y: p.equity - 1 })),
   }];
@@ -79,48 +96,51 @@ export default function Dashboard() {
       </div>
 
       <div className="tiles" style={{ marginBottom: 16 }}>
-        <StatTile label="Net Sharpe" value={fmtNum(book.sharpe_net, 3)}
-                  sub={`kill < 0.50 · advance ≥ 0.80`}
+        <StatTile label="Risk-adjusted score" value={fmtNum(book.sharpe_net, 3)}
+                  sub="Sharpe · below 0.50 kills it, 0.80 advances"
                   tone={book.sharpe_net == null ? '' : book.sharpe_net >= 0.5 ? 'pos' : 'neg'} />
-        <StatTile label="Max drawdown" value={fmtPct(book.mdd)}
-                  sub="advance needs > −15%" tone="neg" />
-        <StatTile label="Annual return" value={fmtPct(book.ann_return)}
-                  sub={`vol ${fmtPct(book.ann_vol)}`}
+        <StatTile label="Worst losing stretch" value={fmtPct(book.mdd)}
+                  sub="max drawdown · must stay above −15%" tone="neg" />
+        <StatTile label="Return per year" value={fmtPct(book.ann_return)}
+                  sub={`typical yearly swing ±${fmtPct(book.ann_vol)}`}
                   tone={book.ann_return == null ? '' : book.ann_return >= 0 ? 'pos' : 'neg'} />
-        <StatTile label="Avg annual return" value={fmtSignedPct(cagr, 1)}
+        <StatTile label="Growth per year" value={fmtSignedPct(cagr, 1)}
                   sub={eqYears ? `compound, over ${fmtNum(eqYears, 1)} years` : ''}
                   tone={cagr == null ? '' : cagr >= 0 ? 'pos' : 'neg'} />
-        <StatTile label="Ensemble Rank IC" value={fmtNum(summary.ic?.RankIC, 4)}
-                  sub={`floor 0.02 · ICIR ${fmtNum(summary.ic?.RankICIR, 2)}`}
+        <StatTile label="Prediction accuracy" value={fmtNum(summary.ic?.RankIC, 4)}
+                  sub={`rank IC · floor 0.02 · ICIR ${fmtNum(summary.ic?.RankICIR, 2)}`}
                   tone={summary.ic?.RankIC == null ? '' : summary.ic.RankIC >= 0.02 ? 'pos' : 'neg'} />
-        <StatTile label="Deflated Sharpe" value={fmtNum(book.dsr?.DSR, 3)}
-                  sub={`N = ${fmtInt(book.dsr?.N)} trials in the ledger`} />
-        <StatTile label="Barrier trades" value={fmtInt(book.n_trades)}
-                  sub={`avg hold ${fmtNum(book.avg_hold_sessions, 1)} sessions`} />
+        <StatTile label="Luck-adjusted score" value={fmtNum(book.dsr?.DSR, 3)}
+                  sub={`deflated Sharpe over ${fmtInt(book.dsr?.N)} tries`} />
+        <StatTile label="Trades tested" value={fmtInt(book.n_trades)}
+                  sub={`held ${fmtNum(book.avg_hold_sessions, 1)} trading days on average`} />
       </div>
 
       {equitySeries && (
-        <Card title="Change since start — deployed book"
-              subtitle={`${equity.start} to ${equity.end}, net of costs, open-to-open. `
-                + `Final ${fmtSignedPct(equity.final_equity - 1, 1)} · avg ${fmtSignedPct(cagr, 1)}/yr `
-                + `· worst drawdown ${fmtPct(equity.max_drawdown)}.`}>
+        <Card title="How money in this strategy would have grown"
+              subtitle={`Simulated from ${equity.start} to ${equity.end}, after trading costs. `
+                + `Total ${fmtSignedPct(equity.final_equity - 1, 1)} · average ${fmtSignedPct(cagr, 1)} per year `
+                + `· worst losing stretch ${fmtPct(equity.max_drawdown)}.`}>
           <LineChart series={equitySeries} height={280} zeroLine
                      yFormat={(v) => fmtSignedPct(v, 1)} />
         </Card>
       )}
 
-      <Card title="G-11 go/no-go gates"
-            subtitle="The blueprint's ship criteria, evaluated against the deployed book.">
+      <Card title="Quality checks (the G-11 gates)"
+            subtitle="Every rule the strategy must pass before it counts as tradeable. One fail and it stays in research.">
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Criterion</th><th className="n">Value</th>
-                <th className="n">Threshold</th><th>Status</th><th>Note</th>
+                <Th k="id" sort={checkSort.sort} onSort={checkSort.onSort}>Check</Th>
+                <Th k="value" num sort={checkSort.sort} onSort={checkSort.onSort}>This strategy</Th>
+                <Th k="threshold" num sort={checkSort.sort} onSort={checkSort.onSort}>Needs to be</Th>
+                <Th k="pass" sort={checkSort.sort} onSort={checkSort.onSort}>Result</Th>
+                <th>What it means</th>
               </tr>
             </thead>
             <tbody>
-              {g.checks.map((c) => (
+              {checkSort.rows.map((c) => (
                 <tr key={c.id}>
                   <td>{c.id}</td>
                   <td className="n">{fmtNum(c.value, 4)}</td>
@@ -135,56 +155,53 @@ export default function Dashboard() {
       </Card>
 
       <div className="grid cols-2">
-        <Card title="Member Rank IC" subtitle="Out-of-sample, stitched across walk-forward folds. A member joins the ensemble only above the 0.02 floor (M10-03).">
+        <Card title="How accurate is each model?"
+              subtitle="The strategy blends several models. Each bar is one model's prediction accuracy (rank IC) on data it never saw; a model gets a vote only above the 0.02 floor.">
           <BarChart data={memberBars} horizontal height={Math.max(180, memberBars.length * 30 + 40)}
                     refLine={summary.member_admission_floor} refLabel="0.02 floor"
                     valueFormat={(v) => fmtNum(v, 3)} />
         </Card>
 
-        <Card title="Baselines it must beat (G-08)"
-              subtitle="A model that cannot beat both free baselines does not ship.">
+        <Card title="Does it beat doing the simple thing?"
+              subtitle="If the strategy can't beat just buying the index (SPY) and a basic momentum recipe, it doesn't ship.">
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Book</th><th className="n">Sharpe</th><th className="n">Ann. return</th><th className="n">Max DD</th></tr></thead>
+              <thead><tr>
+                <Th k="name" sort={blSort.sort} onSort={blSort.onSort}>Approach</Th>
+                <Th k="sharpe" num sort={blSort.sort} onSort={blSort.onSort}>Risk-adjusted score</Th>
+                <Th k="ann" num sort={blSort.sort} onSort={blSort.onSort}>Return per year</Th>
+                <Th k="mdd" num sort={blSort.sort} onSort={blSort.onSort}>Worst stretch</Th>
+              </tr></thead>
               <tbody>
-                <tr>
-                  <td><span className="legend"><span className="swatch sq" style={{ background: 'var(--series-1)' }} /> Deployed book</span></td>
-                  <td className="n"><strong>{fmtNum(book.sharpe_net, 3)}</strong></td>
-                  <td className="n">{fmtPct(book.ann_return)}</td>
-                  <td className="n">{fmtPct(book.mdd)}</td>
-                </tr>
-                <tr>
-                  <td><span className="legend"><span className="swatch sq" style={{ background: 'var(--series-2)' }} /> SPY buy &amp; hold</span></td>
-                  <td className="n">{fmtNum(bl.spy_bh?.sharpe_net, 3)}</td>
-                  <td className="n">{fmtPct(bl.spy_bh?.ann_return)}</td>
-                  <td className="n">{fmtPct(bl.spy_bh?.mdd)}</td>
-                </tr>
-                <tr>
-                  <td><span className="legend"><span className="swatch sq" style={{ background: 'var(--series-3)' }} /> 12-1 momentum L/S</span></td>
-                  <td className="n">{fmtNum(bl.mom_12_1?.sharpe_net, 3)}</td>
-                  <td className="n">{fmtPct(bl.mom_12_1?.ann_return)}</td>
-                  <td className="n">{fmtPct(bl.mom_12_1?.mdd)}</td>
-                </tr>
+                {blSort.rows.map((r) => (
+                  <tr key={r.name}>
+                    <td><span className="legend"><span className="swatch sq" style={{ background: r.color }} /> {r.name}</span></td>
+                    <td className="n">{r.strong ? <strong>{fmtNum(r.sharpe, 3)}</strong> : fmtNum(r.sharpe, 3)}</td>
+                    <td className="n">{fmtPct(r.ann)}</td>
+                    <td className="n">{fmtPct(r.mdd)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
           <div className="note">
-            Alpha vs SPY <Delta value={bl.alpha_beta_vs_spy?.alpha_ann} /> annualised,
-            beta {fmtNum(bl.alpha_beta_vs_spy?.beta, 3)}.
+            Extra return beyond what the market itself gave (alpha):{' '}
+            <Delta value={bl.alpha_beta_vs_spy?.alpha_ann} /> per year · moves{' '}
+            {fmtNum(bl.alpha_beta_vs_spy?.beta, 2)}× as much as the market (beta).
           </div>
         </Card>
       </div>
 
       <div className="grid cols-2">
         {cpcvBars.length > 0 && (
-          <Card title="CPCV path Sharpes"
-                subtitle={`Combinatorial purged CV (N=6, k=2): 15 splits assembled into 5 backtest paths. Median ${fmtNum(summary.cpcv.sharpe_median, 2)}, worst-path drawdown ${fmtPct(summary.cpcv.mdd_worst)}. A stability estimate — it trains across eras, so it is not a live-replicable number.`}>
+          <Card title="Stability check"
+                subtitle={`The same strategy re-scored on 5 alternate re-shuffles of history (CPCV). Similar bars = the result isn't a fluke of one particular period. Median score ${fmtNum(summary.cpcv.sharpe_median, 2)}, worst losing stretch across paths ${fmtPct(summary.cpcv.mdd_worst)}. A robustness estimate, not a live-tradeable number.`}>
             <BarChart data={cpcvBars} height={210} valueFormat={(v) => fmtNum(v, 2)} />
           </Card>
         )}
         {sens.length > 0 && (
-          <Card title="Cost sensitivity"
-                subtitle="Net Sharpe of the Stage-1 fast path across the mandated 5/15/30 bps grid — how much of the edge survives friction.">
+          <Card title="What if trading got more expensive?"
+                subtitle="The risk-adjusted score as per-trade costs rise (5, 15, 30 hundredths of a percent). Shows how much of the edge survives real-world fees and slippage.">
             <BarChart data={sens} height={210} bySign valueFormat={(v) => fmtNum(v, 2)} />
           </Card>
         )}

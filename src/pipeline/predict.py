@@ -266,7 +266,8 @@ def run_predict(m1_dir: str, eod_dir: str, out_dir: str, config_path: str | None
     for t, cur in current.items():
         if t not in book.index and abs(cur) > 1e-6:
             sells.append({"ticker": t, "target_weight": 0.0,
-                          "current_weight": round(float(cur), 5)})
+                          "current_weight": round(float(cur), 5),
+                          "last_close": round(float(last_close.get(t, np.nan)), 2)})
 
     suggestions = {
         "as_of_close": str(t_last.date()),

@@ -49,9 +49,14 @@ export function config() {
   };
 }
 
-/** Filter + paginate the trade sample (the full ledger stays on the volume). */
+const SORTABLE_TRADE_KEYS = new Set(['ticker', 'entry_date', 'exit_date',
+  'entry_price', 'exit_price', 'barrier_hit', 'holding_days', 'ensemble_rank',
+  'exit_ret_net']);
+
+/** Filter + sort + paginate the trade sample (the full ledger stays on the
+ *  volume). Sorting lives here because the client only ever sees one page. */
 export function queryTrades({ limit = 100, offset = 0, exit, ticker, year,
-                              minRank, outcome } = {}) {
+                              minRank, outcome, sortKey, sortDir } = {}) {
   const bundle = tradesSample();
   if (!bundle) return { rows: [], total: 0, n_ledger: 0 };
   let rows = bundle.rows;
@@ -66,6 +71,19 @@ export function queryTrades({ limit = 100, offset = 0, exit, ticker, year,
   }
   if (outcome === 'win') rows = rows.filter((r) => r.exit_ret_net > 0);
   if (outcome === 'loss') rows = rows.filter((r) => r.exit_ret_net <= 0);
+  if (sortKey && SORTABLE_TRADE_KEYS.has(sortKey)) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    rows = [...rows].sort((x, y) => {
+      const a = x[sortKey];
+      const b = y[sortKey];
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;          // nulls last regardless of direction
+      if (b == null) return -1;
+      const c = typeof a === 'number' && typeof b === 'number'
+        ? a - b : String(a).localeCompare(String(b));
+      return dir * c;
+    });
+  }
   const total = rows.length;
   const page = rows.slice(Number(offset), Number(offset) + Number(limit));
   return { rows: page, total, n_ledger: bundle.n_total, note: bundle.note };

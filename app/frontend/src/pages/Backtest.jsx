@@ -5,17 +5,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { BarChart, LineChart, fmtNum, fmtPct, fmtInt, fmtSignedPct } from '../components/Chart.jsx';
-import { Card, StatTile, Loading, ErrorBox, OutcomeBadge, Delta } from '../components/Bits.jsx';
+import { Card, StatTile, Loading, ErrorBox, OutcomeBadge, Delta, Th } from '../components/Bits.jsx';
 
-const EXIT_LABEL = { upper: 'Profit-take', lower: 'Stop', vertical: 'Time exit', censored: 'Censored' };
+const EXIT_LABEL = { upper: 'Hit profit target', lower: 'Hit stop-loss', vertical: 'Time limit', censored: 'Still open at end' };
 
 export default function Backtest() {
   const [d, setD] = useState({ loading: true });
-  const [filters, setFilters] = useState({ exit: '', ticker: '', outcome: '', limit: 50, offset: 0 });
+  const [filters, setFilters] = useState({
+    exit: '', ticker: '', outcome: '', sortKey: '', sortDir: '', limit: 50, offset: 0,
+  });
   const [table, setTable] = useState(null);
 
   useEffect(() => {
-    api.tradesSummary().then((s) => setD({ s })).catch((error) => setD({ error }));
+    Promise.all([api.tradesSummary(), api.config().catch(() => null)])
+      .then(([s, cfg]) => setD({ s, cfg })).catch((error) => setD({ error }));
   }, []);
   useEffect(() => { api.trades(filters).then(setTable).catch(() => setTable(null)); }, [filters]);
 
@@ -36,6 +39,16 @@ export default function Backtest() {
   }
 
   const s = d.s;
+  const hDays = d.cfg?.barrier?.h_days ?? 20;
+
+  // The ledger is paginated on the server, so sorting is too — a header click
+  // re-queries with sortKey/sortDir and jumps back to the first page.
+  const ledgerSort = { key: filters.sortKey || null, dir: filters.sortDir || null };
+  const onLedgerSort = (key) => setFilters((f) => (f.sortKey !== key
+    ? { ...f, sortKey: key, sortDir: 'desc', offset: 0 }
+    : f.sortDir === 'desc'
+      ? { ...f, sortDir: 'asc', offset: 0 }
+      : { ...f, sortKey: '', sortDir: '', offset: 0 }));
   const exitMix = (s.by_exit || []).map((r) => ({
     label: EXIT_LABEL[r.exit] || r.exit,
     value: r.n,
@@ -71,24 +84,33 @@ export default function Backtest() {
 
   return (
     <>
+      <Card>
+        <h1>How the strategy did in testing</h1>
+        <p className="muted small" style={{ margin: '4px 0 0' }}>
+          Every trade the strategy would have made, replayed through history with
+          costs included. This is the evidence behind the daily suggestions.
+        </p>
+      </Card>
+
       <div className="tiles" style={{ marginBottom: 16 }}>
-        <StatTile label="Trades proposed" value={fmtInt(s.n_trades)}
+        <StatTile label="Trades tested" value={fmtInt(s.n_trades)}
                   sub={`${s.date_range[0]} → ${s.date_range[1]}`} />
-        <StatTile label="Win rate" value={fmtPct(s.win_rate)}
-                  sub="net of costs" tone={s.win_rate == null ? '' : s.win_rate > 0.5 ? 'pos' : 'neg'} />
-        <StatTile label="Avg net return" value={fmtSignedPct(s.avg_ret, 2)}
-                  sub={`median ${fmtSignedPct(s.median_ret, 2)} per trade`}
+        <StatTile label="Made money" value={fmtPct(s.win_rate)}
+                  sub="share of trades, after costs"
+                  tone={s.win_rate == null ? '' : s.win_rate > 0.5 ? 'pos' : 'neg'} />
+        <StatTile label="Avg profit per trade" value={fmtSignedPct(s.avg_ret, 2)}
+                  sub={`typical trade ${fmtSignedPct(s.median_ret, 2)}`}
                   tone={s.avg_ret == null ? '' : s.avg_ret >= 0 ? 'pos' : 'neg'} />
-        <StatTile label="Avg hold" value={`${fmtNum(s.avg_hold, 1)}`}
-                  sub="sessions (20-session vertical barrier)" />
-        <StatTile label="Hit profit-take" value={fmtInt(s.total_pt)}
+        <StatTile label="Avg time held" value={`${fmtNum(s.avg_hold, 1)}`}
+                  sub={`trading days (${hDays}-day limit)`} />
+        <StatTile label="Sold at a profit target" value={fmtInt(s.total_pt)}
                   sub={`${fmtPct(s.total_pt / s.n_trades)} of trades`} tone="pos" />
-        <StatTile label="Hit stop" value={fmtInt(s.total_stop)}
+        <StatTile label="Stopped out at a loss" value={fmtInt(s.total_stop)}
                   sub={`${fmtPct(s.total_stop / s.n_trades)} of trades`} tone="neg" />
       </div>
 
-      <Card title="Did conviction pay, inside the book?"
-            subtitle="Average net return by ensemble-rank decile AMONG THE TRADES TAKEN. The book only enters decile-10 names, so D1..D10 here slice that already-narrow top band — not the whole universe. A flat or noisy profile is the expected result; it says the ranking earns its keep at the selection step, not by fine-grading winners inside the book.">
+      <Card title="Did the model's favourites do better?"
+            subtitle="Trades grouped by how strongly the model liked them (D1 = least, D10 = most) — among trades actually taken, which were already the model's top picks. A flat, noisy picture is normal here: the model earns its keep by choosing which stocks to buy at all, not by fine-ranking within its own shortlist.">
         <BarChart data={conviction} height={250} bySign
                   valueFormat={(v) => fmtSignedPct(v, 2)} />
         <div className="note">
@@ -100,43 +122,43 @@ export default function Backtest() {
 
       <div className="grid cols-2">
         <Card title="How trades ended"
-              subtitle="The triple barrier decides every exit: profit-take, stop, or the 20-session time barrier.">
+              subtitle={`Every trade ends one of three ways: it hit its profit target, hit its stop-loss, or ran out of time (${hDays} trading days).`}>
           <BarChart data={exitMix} horizontal height={170}
                     valueFormat={(v) => fmtInt(v)} />
         </Card>
-        <Card title="Average net return by holding length"
-              subtitle="Short holds are cost-hostile by construction (G-17): two legs of friction against a small move.">
+        <Card title="Profit by how long the trade lasted"
+              subtitle="Very short trades struggle: you pay the trading costs twice either way, and a quick exit means the price barely moved.">
           <BarChart data={holds} height={210} bySign valueFormat={(v) => fmtSignedPct(v, 2)} />
         </Card>
       </div>
 
       <div className="grid cols-2">
-        <Card title="Win rate by entry year"
-              subtitle="Winning cross-sectionally looks like 52–55% — not 70% (G-12).">
+        <Card title="Share of winning trades, year by year"
+              subtitle="A healthy strategy of this kind wins about 52–55% of its trades — not 70%. It profits from a small edge repeated many times.">
           <LineChart series={byYearWin} height={220} zeroLine
                      yFormat={(v) => fmtPct(v, 0)} xLabels={8} />
         </Card>
-        <Card title="Average net return by entry year">
+        <Card title="Average profit per trade, year by year">
           <BarChart data={byYearRet} height={220} bySign
                     valueFormat={(v) => fmtSignedPct(v, 1)} labelEvery={2} />
         </Card>
       </div>
 
-      <Card title="Distribution of trade outcomes"
-            subtitle="Net return per trade, clipped at ±50%. The mass sits near zero — cross-sectional edges are thin by nature.">
+      <Card title="What a typical trade looks like"
+            subtitle="How often trades ended with each size of profit or loss (capped at ±50%). Most land near break-even — many small outcomes, tilted slightly to the good side, is the whole game.">
         <BarChart data={dist} height={210} labelEvery={5}
                   color="var(--series-1)" valueFormat={(v) => fmtInt(v)} />
       </Card>
 
-      <Card title="Trade ledger"
-            subtitle={table?.note || 'Individual proposals and their outcomes.'}>
+      <Card title="Every tested trade"
+            subtitle={table?.note || 'Each row is one trade the strategy would have made, and how it turned out.'}>
         <div className="controls">
           <select value={filters.exit}
                   onChange={(e) => setFilters({ ...filters, exit: e.target.value, offset: 0 })}>
-            <option value="">All exits</option>
-            <option value="upper">Profit-take</option>
-            <option value="lower">Stop</option>
-            <option value="vertical">Time exit</option>
+            <option value="">However they ended</option>
+            <option value="upper">Hit profit target</option>
+            <option value="lower">Hit stop-loss</option>
+            <option value="vertical">Time limit</option>
           </select>
           <select value={filters.outcome}
                   onChange={(e) => setFilters({ ...filters, outcome: e.target.value, offset: 0 })}>
@@ -164,10 +186,15 @@ export default function Backtest() {
           <table>
             <thead>
               <tr>
-                <th>Ticker</th><th>Signal</th><th className="n">Entry</th>
-                <th>Exit date</th><th className="n">Exit</th><th>Outcome</th>
-                <th className="n">Held</th><th className="n">Conviction</th>
-                <th className="n">Net return</th>
+                <Th k="ticker" sort={ledgerSort} onSort={onLedgerSort}>Stock</Th>
+                <Th k="entry_date" sort={ledgerSort} onSort={onLedgerSort}>Picked on</Th>
+                <Th k="entry_price" num sort={ledgerSort} onSort={onLedgerSort}>Bought at</Th>
+                <Th k="exit_date" sort={ledgerSort} onSort={onLedgerSort}>Sold on</Th>
+                <Th k="exit_price" num sort={ledgerSort} onSort={onLedgerSort}>Sold at</Th>
+                <Th k="barrier_hit" sort={ledgerSort} onSort={onLedgerSort}>How it ended</Th>
+                <Th k="holding_days" num sort={ledgerSort} onSort={onLedgerSort}>Days held</Th>
+                <Th k="ensemble_rank" num sort={ledgerSort} onSort={onLedgerSort}>Conviction</Th>
+                <Th k="exit_ret_net" num sort={ledgerSort} onSort={onLedgerSort}>Profit / loss</Th>
               </tr>
             </thead>
             <tbody>
