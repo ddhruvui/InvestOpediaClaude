@@ -5,41 +5,60 @@ blueprint requires before real capital (BP15).
 
 ```
 app/
-  backend/    Node + Express — serves the report bundle, owns the paper book
-  frontend/   React + Vite — dashboard, suggestions, backtest explorer, paper trading
+  backend/    Node + Express on Vercel — serves the report bundle from MongoDB, owns the paper book
+  frontend/   React + Vite on Render  — dashboard, suggestions, backtest explorer, paper trading
 ```
-
-## Run it
-
-```bash
-# 1. build the report bundle from pod artifacts (see below)
-python3 tools/build_reports.py --src derived --out reports/latest
-
-# 2. API (also serves the built UI on the same port if frontend/dist exists)
-cd app/backend && npm install && npm start        # http://localhost:8787
-
-# 3. UI in dev mode (hot reload, proxies /api to 8787)
-cd app/frontend && npm install && npm run dev     # http://localhost:5173
-# …or build once and let the API serve it:
-cd app/frontend && npm run build
-```
-
-`npm test` in `app/backend` runs the paper-book regression suite.
 
 ## Where the numbers come from
 
 Nothing is recomputed in the app. `tools/build_reports.py` reads the artifacts the
-RunPod jobs wrote (`derived/`) and emits `reports/latest/*.json`; the API slices
-that bundle. So a number on screen always equals the number the pipeline produced —
-the API cannot drift from it.
+RunPod jobs wrote (`derived/`) and emits `reports/latest/*.json`;
+`tools/publish_mongo.py` copies those files verbatim into MongoDB Atlas (database
+`InvestOpediaClaude`, collection `reports`, one document per section, plus a
+`predictions` document per `as_of_close` as history). The API slices that. So a
+number on screen always equals the number the pipeline produced — the API cannot
+drift from it.
 
-To refresh after a pipeline run:
+```
+pods -> derived/ -> build_reports.py -> reports/latest/*.json -> publish_mongo.py -> MongoDB
+                                                                                       |
+                                                Render UI  <-- Vercel API  <-----------+
+```
+
+## Refresh after a pipeline run
+
+`.claude/skills/daily-pipeline/scripts/mirror_reports.sh` (or `scripts/daily.sh`)
+does all of this; by hand:
 
 ```bash
-aws s3 cp $S3FLAGS s3://<volume>/derived/stage3/ derived/ --recursive
-aws s3 cp $S3FLAGS s3://<volume>/derived/predict/suggestions.json derived/
 python3 tools/build_reports.py --src derived --out reports/latest
+python3 tools/publish_mongo.py --bundle reports/latest      # needs MONGO_URI/DB_PASSWORD in .env
 ```
+
+Until the publish step runs, the deployed console shows the previous run.
+
+## Deploy
+
+| piece | where | how | config |
+|---|---|---|---|
+| `backend/` | Vercel | import the `InvestOpediaClaudeBE` repo, preset *Other* | `MONGO_URI`, `DB_PASSWORD`, `CORS_ORIGIN` |
+| `frontend/` | Render | static site from `InvestOpediaClaudeFE` (`render.yaml`), publish `dist` | `VITE_API_BASE` = the Vercel URL |
+
+Atlas → Network Access must allow `0.0.0.0/0` (Vercel functions have no fixed IP).
+The two deploy repos are `git subtree` mirrors of these directories — edit here,
+commit, then `scripts/publish_repos.sh`. Per-directory READMEs have the details.
+
+## Run locally (dev / tests)
+
+```bash
+cp app/backend/.env.example app/backend/.env      # Mongo creds; omit to fall back to reports/latest files
+cd app/backend && npm install && npm start        # http://localhost:8787 (API + built UI if frontend/dist exists)
+cd app/frontend && npm install && npm run dev     # http://localhost:5173, /api proxied to 8787
+cd app/frontend && npm run build                  # or build once and let the API serve it
+```
+
+`npm test` in `app/backend` runs the paper-book regression suite against the file
+store; `npm run test:mongo` smoke-tests the real database.
 
 ## Pages
 

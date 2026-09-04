@@ -11,41 +11,17 @@
 //   decay       rolling 63-session paper Sharpe vs the backtest expectation;
 //               < ½ for 2+ quarters ⇒ retrain-or-retire (G-11/G-16)
 //
-// State is a single JSON file written atomically; the book is small by design.
-import fs from 'node:fs';
-import path from 'node:path';
+// State is one small document (MongoDB in production, a JSON file in dev);
+// see store.js. Every write is load → mutate → save, so the book stays small
+// and the last writer wins — fine for a single operator's paper book.
 import { config } from './reports.js';
+import { emptyBook, loadBook, saveBook, bookLocation } from './store.js';
 
-const DATA_DIR = process.env.PAPER_DATA_DIR
-  || path.resolve(process.cwd(), 'data');
-const STORE = path.join(DATA_DIR, 'paper_book.json');
-
-// A FACTORY, never a shared literal: `{...TEMPLATE}` is a shallow copy, so a
-// literal would hand every caller the SAME positions array — push() would then
-// mutate the template itself and reset() would write the stale positions back.
-const emptyBook = () => ({
-  positions: [], nav: 100000, account_equity: null,
-  created_utc: null, updated_utc: null, seq: 0,
-});
-
-function load() {
-  try {
-    return { ...emptyBook(), ...JSON.parse(fs.readFileSync(STORE, 'utf8')) };
-  } catch {
-    return { ...emptyBook(), created_utc: new Date().toISOString() };
-  }
-}
-
-function save(state) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  state.updated_utc = new Date().toISOString();
-  const tmp = `${STORE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 1));
-  fs.renameSync(tmp, STORE);          // atomic
-  return state;
-}
+export { bookLocation };
 
 const isoDate = (d) => new Date(d).toISOString().slice(0, 10);
+
+const fail = (message, status) => Object.assign(new Error(message), { status });
 
 /** Business days between two ISO dates (weekends only; holidays are the
  *  calendar's job — this is the conservative direction for a PDT budget). */
@@ -68,15 +44,13 @@ function roundTripCostFrac(side, holdingDays, cfg) {
 }
 
 // ------------------------------------------------------------------ reads
-export function state() {
-  const s = load();
-  const cfg = config();
-  return { ...s, stats: stats(s, cfg), cfg };
+export async function state() {
+  const [s, cfg] = await Promise.all([loadBook(), config()]);
+  return { ...s, stats: stats(s, cfg), cfg, location: bookLocation() };
 }
 
 /** Same-session round trips inside the rolling window ending `today`. */
-function pdtCount(s, today) {
-  const cfg = config();
+function pdtCount(s, cfg, today) {
   const win = cfg.pdt.window_business_days;
   return s.positions.filter((p) =>
     p.status === 'closed' && p.day_trade
@@ -111,7 +85,8 @@ function median(xs) {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 }
 
-export function stats(s = load(), cfg = config()) {
+/** Pure: derives every ops number from a book + config. */
+export function stats(s, cfg) {
   const open = s.positions.filter((p) => p.status === 'open');
   const ordered = s.positions.filter((p) => p.status === 'ordered');
   const closed = s.positions.filter((p) => p.status === 'closed');
@@ -156,7 +131,7 @@ export function stats(s = load(), cfg = config()) {
     },
     pdt: {
       enforced: s.account_equity != null && s.account_equity < cfg.pdt.equity_floor,
-      used: pdtCount(s, today),
+      used: pdtCount(s, cfg, today),
       limit: cfg.pdt.limit,
       window_business_days: cfg.pdt.window_business_days,
       note: 'Flat ≤3 budget ignores FINRA\'s 6%-of-total-trades carve-out '
@@ -179,33 +154,28 @@ export function stats(s = load(), cfg = config()) {
 }
 
 // ----------------------------------------------------------------- writes
-export function openPosition(input) {
-  const s = load();
-  const cfg = config();
+export async function openPosition(input) {
+  const [s, cfg] = await Promise.all([loadBook(), config()]);
   const {
     ticker, side = 1, target_weight = 0, signal_date, ref_close,
     stop_pct, profit_take_pct, max_hold_sessions = cfg.barrier.h_days,
     ensemble_rank = null,
   } = input;
 
-  if (!ticker) throw Object.assign(new Error('ticker is required'), { status: 400 });
-  if (![1, -1].includes(Number(side))) {
-    throw Object.assign(new Error('side must be 1 or -1'), { status: 400 });
+  if (!ticker) throw fail('ticker is required', 400);
+  if (![1, -1].includes(Number(side))) throw fail('side must be 1 or -1', 400);
+  const sym = String(ticker).toUpperCase();
+  if (s.positions.some((p) => p.ticker === sym && p.status !== 'closed')) {
+    throw fail(`${sym} already has an open/ordered position`, 409);
   }
-  if (s.positions.some((p) => p.ticker === ticker && p.status !== 'closed')) {
-    throw Object.assign(new Error(`${ticker} already has an open/ordered position`),
-      { status: 409 });
-  }
-  const st = stats(s, cfg);
-  if (st.kill_switch.tripped) {
-    throw Object.assign(new Error('kill switch tripped — new orders halted (BP16)'),
-      { status: 423 });
+  if (stats(s, cfg).kill_switch.tripped) {
+    throw fail('kill switch tripped — new orders halted (BP16)', 423);
   }
 
   s.seq = (s.seq ?? 0) + 1;
   const pos = {
     id: `p${String(s.seq).padStart(5, '0')}`,
-    ticker: String(ticker).toUpperCase(),
+    ticker: sym,
     side: Number(side),
     target_weight: Number(target_weight) || 0,
     signal_date: signal_date ? isoDate(signal_date) : isoDate(Date.now()),
@@ -218,19 +188,17 @@ export function openPosition(input) {
     created_utc: new Date().toISOString(),
   };
   s.positions.push(pos);
-  save(s);
+  await saveBook(s);
   return pos;
 }
 
-export function recordFill(id, { fill_price, official_open, fill_date }) {
-  const s = load();
+export async function recordFill(id, { fill_price, official_open, fill_date }) {
+  const s = await loadBook();
   const p = s.positions.find((x) => x.id === id);
-  if (!p) throw Object.assign(new Error('position not found'), { status: 404 });
-  if (p.status !== 'ordered') {
-    throw Object.assign(new Error(`position is ${p.status}, not ordered`), { status: 409 });
-  }
+  if (!p) throw fail('position not found', 404);
+  if (p.status !== 'ordered') throw fail(`position is ${p.status}, not ordered`, 409);
   const fill = Number(fill_price);
-  if (!(fill > 0)) throw Object.assign(new Error('fill_price must be > 0'), { status: 400 });
+  if (!(fill > 0)) throw fail('fill_price must be > 0', 400);
   const open = official_open == null ? null : Number(official_open);
 
   p.fill_price = fill;
@@ -242,20 +210,17 @@ export function recordFill(id, { fill_price, official_open, fill_date }) {
   if (p.stop_pct != null) p.stop_price = fill * (1 + p.stop_pct / 100);
   if (p.profit_take_pct != null) p.profit_take_price = fill * (1 + p.profit_take_pct / 100);
   p.status = 'open';
-  save(s);
+  await saveBook(s);
   return p;
 }
 
-export function closePosition(id, { exit_price, exit_date, reason = 'manual' }) {
-  const s = load();
-  const cfg = config();
+export async function closePosition(id, { exit_price, exit_date, reason = 'manual' }) {
+  const [s, cfg] = await Promise.all([loadBook(), config()]);
   const p = s.positions.find((x) => x.id === id);
-  if (!p) throw Object.assign(new Error('position not found'), { status: 404 });
-  if (p.status !== 'open') {
-    throw Object.assign(new Error(`position is ${p.status}, not open`), { status: 409 });
-  }
+  if (!p) throw fail('position not found', 404);
+  if (p.status !== 'open') throw fail(`position is ${p.status}, not open`, 409);
   const px = Number(exit_price);
-  if (!(px > 0)) throw Object.assign(new Error('exit_price must be > 0'), { status: 400 });
+  if (!(px > 0)) throw fail('exit_price must be > 0', 400);
   const date = exit_date ? isoDate(exit_date) : isoDate(Date.now());
   const holding = Math.max(0, businessDaysBetween(p.fill_date, date));
   const dayTrade = date === p.fill_date;
@@ -263,10 +228,10 @@ export function closePosition(id, { exit_price, exit_date, reason = 'manual' }) 
   if (dayTrade) {
     const st = stats(s, cfg);
     if (st.pdt.enforced && st.pdt.used >= cfg.pdt.limit) {
-      throw Object.assign(new Error(
+      throw fail(
         `PDT budget exhausted (${st.pdt.used}/${cfg.pdt.limit} in `
         + `${cfg.pdt.window_business_days} business days) — defer this exit to the `
-        + 'next open (pdt.mode_under_25k)'), { status: 423 });
+        + 'next open (pdt.mode_under_25k)', 423);
     }
   }
 
@@ -278,32 +243,30 @@ export function closePosition(id, { exit_price, exit_date, reason = 'manual' }) 
   p.ret_gross = p.side * (px / p.fill_price - 1);
   p.ret_net = p.ret_gross - roundTripCostFrac(p.side, holding, cfg);
   p.status = 'closed';
-  save(s);
+  await saveBook(s);
   return p;
 }
 
-export function removePosition(id) {
-  const s = load();
+export async function removePosition(id) {
+  const s = await loadBook();
   const before = s.positions.length;
   s.positions = s.positions.filter((x) => x.id !== id);
-  if (s.positions.length === before) {
-    throw Object.assign(new Error('position not found'), { status: 404 });
-  }
-  save(s);
+  if (s.positions.length === before) throw fail('position not found', 404);
+  await saveBook(s);
   return { removed: id };
 }
 
-export function settings({ nav, account_equity }) {
-  const s = load();
+export async function settings({ nav, account_equity }) {
+  const s = await loadBook();
   if (nav != null) s.nav = Number(nav);
   if (account_equity !== undefined) {
     s.account_equity = account_equity == null ? null : Number(account_equity);
   }
-  save(s);
+  await saveBook(s);
   return { nav: s.nav, account_equity: s.account_equity };
 }
 
-export function reset() {
-  save({ ...emptyBook(), created_utc: new Date().toISOString() });
+export async function reset() {
+  await saveBook({ ...emptyBook(), created_utc: new Date().toISOString() });
   return { ok: true };
 }

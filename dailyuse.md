@@ -346,9 +346,10 @@ app serves, `reports/raw/` keeps the pod stage-reports for provenance.
 aws s3 cp $S3FLAGS s3://$RUNPOD_VOLUME_ID/derived/stage3/ derived/ --recursive
 aws s3 cp $S3FLAGS s3://$RUNPOD_VOLUME_ID/derived/predict/suggestions.json derived/
 python3 tools/build_reports.py --src derived --out reports/latest
+python3 tools/publish_mongo.py --bundle reports/latest    # -> MongoDB, what the deployed console reads
 
 # serve it
-cd app/backend && npm install && npm start      # http://localhost:8787 (API + built UI)
+cd app/backend && npm install && npm start      # local only; the real console is Render UI -> Vercel API -> MongoDB
 cd app/frontend && npm run dev                  # hot-reload UI on :5173, proxies /api
 cd app/backend && npm test                      # paper-book regression suite
 ```

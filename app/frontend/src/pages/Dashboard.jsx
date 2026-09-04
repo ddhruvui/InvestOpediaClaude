@@ -47,8 +47,9 @@ export default function Dashboard() {
   if (d.error) {
     return (
       <ErrorBox error={d.error} hint={
-        <>Build the bundle from the pod artifacts first:{' '}
-          <code>python3 tools/build_reports.py --src derived --out reports/latest</code></>
+        <>The report bundle has not been published yet. After a pipeline run:{' '}
+          <code>python3 tools/build_reports.py</code> then{' '}
+          <code>python3 tools/publish_mongo.py</code></>
       } />
     );
   }

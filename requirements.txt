@@ -11,3 +11,5 @@ vectorbt>=0.26          # M15 fast-path cross-check engine
 torch>=2.2              # M7 GRU / M8 CNN (GPU on RunPod)
 exchange_calendars>=4.5 # already used by fetch_calendar
 pytest>=8
+pymongo>=4.6            # tools/publish_mongo.py -> MongoDB Atlas (the deployed console's store)
+certifi>=2024.2         # CA bundle for Atlas TLS on python.org macOS builds

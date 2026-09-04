@@ -33,9 +33,10 @@ export default function Backtest() {
   if (d.loading) return <Loading what="backtest trades" />;
   if (d.error) {
     return <ErrorBox error={d.error} hint={
-      <>The trade ledger comes from Stage 3. Run it on a pod, then rebuild:{' '}
+      <>The trade ledger comes from Stage 3. Run it on a pod, then rebuild and publish:{' '}
         <code>scripts/launch_predict.sh stage3</code> →{' '}
-        <code>python3 tools/build_reports.py</code></>} />;
+        <code>python3 tools/build_reports.py</code> →{' '}
+        <code>python3 tools/publish_mongo.py</code></>} />;
   }
 
   const s = d.s;

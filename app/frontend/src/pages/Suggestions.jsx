@@ -42,7 +42,7 @@ export default function Suggestions() {
   const exitSort = useSort(d.s?.sells_or_exits ?? EMPTY);
 
   if (d.loading) return <Loading what="suggestions" />;
-  if (d.error) return <ErrorBox error={d.error} hint="Run the predict job on a pod, then rebuild the report bundle." />;
+  if (d.error) return <ErrorBox error={d.error} hint="Run the predict job on a pod, then rebuild and publish the report bundle." />;
 
   const s = d.s;
   const book = s.portfolio || {};

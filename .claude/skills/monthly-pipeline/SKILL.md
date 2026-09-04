@@ -80,7 +80,8 @@ FULL_MIRROR=1 .claude/skills/daily-pipeline/scripts/mirror_reports.sh
 ```
 
 That re-pulls `derived/stage{1,2,3}/*_report.json` AND the stage3 equity/trades parquets,
-then rebuilds `reports/latest` (the whole contract with the UI). Verify the dashboard bundle
+then rebuilds `reports/latest` (the whole contract with the UI) and publishes it to MongoDB
+for the deployed console. Verify the dashboard bundle
 moved: `reports/latest/manifest.json` `built_utc` is from this run and `summary.json`'s
 verdict/gate rows changed date. Then commit the refreshed `derived/` + `reports/` files, as
 the daily mirror commits do.

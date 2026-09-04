@@ -45,7 +45,9 @@ export default function App() {
             research console
             {health?.generated_utc
               ? ` · report built ${health.generated_utc.replace('T', ' ').replace('+00:00', 'Z')}`
-              : ' · report bundle not built'}
+              : health ? ' · report bundle not published' : ' · API unreachable'}
+            {health?.published_utc
+              && ` · published ${health.published_utc.replace('T', ' ').replace('+00:00', 'Z')}`}
           </small>
         </div>
         <nav className="nav">

@@ -1,20 +1,22 @@
 {
-  "name": "eod-trading-reports-api",
-  "version": "1.0.0",
+  "name": "investopediaclaude-be",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Report + paper-trading API for the EOD swing/position trading system",
+  "description": "Report + paper-trading API for the EOD swing/position trading system — MongoDB-backed, deploys to Vercel",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node test_paper.mjs"
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env src/server.js",
+    "test": "node test_paper.mjs",
+    "test:mongo": "node --env-file-if-exists=.env test_mongo.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "mongodb": "^6.12.0"
   }
 }

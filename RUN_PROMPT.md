@@ -48,14 +48,17 @@ Ask for these back, and treat anything missing as not-done:
 - Results pulled **down to this machine** — `derived/suggestions.json` and
   `reports/suggestions_latest.md` present and dated today
 - `reports/latest/` rebuilt (that bundle is the whole contract with the UI), plus the book size
+- **Published to MongoDB** — `publish_mongo.py` printed `verify: ... suggestions.as_of_close=<today's close>`;
+  the deployed console shows the previous run until this happens
 
 The pods write to the network volume, not to your disk — until the mirror step runs there is
 nothing local to look at and the UI still shows the previous run. If you only want that last
 step, say so rather than re-running the pipeline:
 
-> Everything already ran on the pods. Just pull the results down and rebuild the reports bundle.
+> Everything already ran on the pods. Just pull the results down, rebuild the reports bundle, and publish it.
 
-Then view it with `cd app/backend && npm start` (http://localhost:8787).
+Then view it on the deployed console (Render UI → Vercel API → MongoDB). The header shows
+the `published` timestamp, so a stale page is obvious.
 
 A pod exiting is not evidence a stage succeeded — a stage can be OOM-killed (`exit=-9`) while
 its pod still self-terminates normally and leaves yesterday's output in place. Ask for exit

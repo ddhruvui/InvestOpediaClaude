@@ -80,7 +80,7 @@ export default function Paper() {
   const closedSort = useSort(closed);
 
   if (d.loading) return <Loading what="paper book" />;
-  if (d.error) return <ErrorBox error={d.error} hint="Is the API running? npm start in app/backend." />;
+  if (d.error) return <ErrorBox error={d.error} hint="Is the API reachable? Check VITE_API_BASE and the backend's /api/health." />;
 
   const { stats: st, cfg, nav, account_equity: equity } = d.p;
 

@@ -1,0 +1,16 @@
+# Render blueprint for the UI (static site). Create the service from this file
+# or by hand with the same settings; either way set VITE_API_BASE to the
+# Vercel backend URL before the first build — Vite bakes it in at build time.
+services:
+  - type: web
+    name: investopediaclaude-fe
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

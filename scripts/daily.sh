@@ -107,5 +107,12 @@ for f in stage3_equity.parquet stage3_daily_net.parquet stage3_trades_ungated.pa
 done
 
 say "5/5 reports: rebuilding reports/latest bundle"
-python3 tools/build_reports.py --src derived --out reports/latest
-say "DONE — Today page: (cd app/backend && npm start), or read reports/suggestions_latest.md"
+python3 tools/build_reports.py --src derived --out reports/latest || { say "FATAL: build_reports failed"; exit 1; }
+# The deployed console (Vercel API + Render UI) reads MongoDB, not this disk:
+# until this step runs it still shows the previous run. SKIP_PUBLISH=1 to skip.
+if [ -z "${SKIP_PUBLISH:-}" ]; then
+  say "5/5 publish: reports/latest -> MongoDB"
+  python3 tools/publish_mongo.py --bundle reports/latest \
+    || { say "FATAL: publish_mongo failed — the deployed console still shows the previous run"; exit 1; }
+fi
+say "DONE — deployed console reads MongoDB; locally: (cd app/backend && npm start), or read reports/suggestions_latest.md"

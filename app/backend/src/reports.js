@@ -1,8 +1,19 @@
-// Report bundle access. The bundle is built by tools/build_reports.py from pod
-// artifacts; this layer only reads and slices it — no computation, so the API
-// can never disagree with the pipeline that produced the numbers.
+// Report bundle access.
+//
+// Production: the bundle lives in MongoDB (collection `reports`, one document
+// per section, put there by tools/publish_mongo.py after each pipeline run).
+// Dev/tests (no MONGO_URI): the same sections read from reports/<bundle>/*.json.
+//
+// Either way this layer only reads and slices — nothing is recomputed, so the
+// API can never disagree with the pipeline that produced the numbers.
 import fs from 'node:fs';
 import path from 'node:path';
+import { getDb, mongoEnabled, BUNDLE, DB_NAME } from './db.js';
+
+export const SECTIONS = ['summary', 'equity', 'suggestions', 'trades_summary',
+  'trades_sample', 'manifest', 'calendar', 'config'];
+
+/* ------------------------------------------------- files (local / tests) */
 
 /** Branch of the repo this backend lives in (worktree-aware), or null. */
 function currentBranch() {
@@ -21,23 +32,22 @@ function currentBranch() {
 
 // main serves the universal whole-market bundle (reports/latest); the top-150
 // experiment branch serves its own restricted-universe bundle. Explicit
-// REPORTS_DIR always wins. Checked once at startup — restart after a checkout.
+// REPORTS_DIR / REPORT_BUNDLE always win. Checked once at startup.
 const BRANCH_BUNDLE = { top150: 'top150', top200: 'top150' };
 
 function defaultReportsDir() {
   const base = path.resolve(process.cwd(), '../../reports');
-  const bundle = BRANCH_BUNDLE[currentBranch()];
-  if (bundle && fs.existsSync(path.join(base, bundle, 'suggestions.json'))) {
-    return path.join(base, bundle);
+  const wanted = process.env.REPORT_BUNDLE || BRANCH_BUNDLE[currentBranch()];
+  if (wanted && fs.existsSync(path.join(base, wanted, 'suggestions.json'))) {
+    return path.join(base, wanted);
   }
   return path.join(base, 'latest');
 }
 
 const REPORTS_DIR = process.env.REPORTS_DIR || defaultReportsDir();
+const fileCache = new Map();
 
-const cache = new Map();
-
-function readJson(name) {
+function readFile(name) {
   const file = path.join(REPORTS_DIR, name);
   let stat;
   try {
@@ -45,11 +55,11 @@ function readJson(name) {
   } catch {
     return null;
   }
-  const hit = cache.get(name);
+  const hit = fileCache.get(name);
   if (hit && hit.mtimeMs === stat.mtimeMs) return hit.data;
   try {
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    cache.set(name, { mtimeMs: stat.mtimeMs, data });
+    fileCache.set(name, { mtimeMs: stat.mtimeMs, data });
     return data;
   } catch (err) {
     console.error(`reports: cannot parse ${name}:`, err.message);
@@ -57,17 +67,54 @@ function readJson(name) {
   }
 }
 
-export const reportsDir = () => REPORTS_DIR;
-export const summary = () => readJson('summary.json');
-export const equity = () => readJson('equity.json');
-export const suggestions = () => readJson('suggestions.json');
-export const tradesSummary = () => readJson('trades_summary.json');
-export const tradesSample = () => readJson('trades_sample.json');
-export const manifest = () => readJson('manifest.json');
-export const readCalendar = () => readJson('calendar.json');
+/* ---------------------------------------------------------------- mongo */
 
-export function config() {
-  return readJson('config.json') || {
+// A warm function keeps each section for a minute; the bundle changes once a
+// day, and the trades sample is ~1.3 MB we would rather not refetch per click.
+const TTL_MS = Number(process.env.REPORT_CACHE_MS ?? 60_000);
+const mongoCache = new Map();          // section -> { at, doc }
+
+async function mongoDoc(section) {
+  const hit = mongoCache.get(section);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.doc;
+  const db = await getDb();
+  const doc = await db.collection('reports').findOne({ _id: `${BUNDLE}/${section}` });
+  mongoCache.set(section, { at: Date.now(), doc });
+  return doc;
+}
+
+/* ------------------------------------------------------------ public API */
+
+export const source = () => (mongoEnabled() ? 'mongo' : 'files');
+export const bundle = () => BUNDLE;
+export const reportsDir = () => (mongoEnabled()
+  ? `mongodb ${DB_NAME}.reports/${BUNDLE}/*` : REPORTS_DIR);
+
+export async function section(name) {
+  if (mongoEnabled()) return (await mongoDoc(name))?.data ?? null;
+  return readFile(`${name}.json`);
+}
+
+export const summary = () => section('summary');
+export const equity = () => section('equity');
+export const suggestions = () => section('suggestions');
+export const tradesSummary = () => section('trades_summary');
+export const tradesSample = () => section('trades_sample');
+export const manifest = () => section('manifest');
+export const readCalendar = () => section('calendar');
+
+/** When the bundle was built and (Mongo only) when it was published. */
+export async function provenance() {
+  if (mongoEnabled()) {
+    const doc = await mongoDoc('manifest');
+    return doc ? { built_utc: doc.built_utc ?? null, published_utc: doc.published_utc ?? null } : null;
+  }
+  const m = readFile('manifest.json');
+  return m ? { built_utc: m.built_utc ?? null, published_utc: null } : null;
+}
+
+export async function config() {
+  return (await section('config')) || {
     cost: { per_trade_bps: 15, borrow_gc_bps_yr: 50, slippage_bps: 0 },
     barrier: { m: 1.5, h_days: 20 },
     pdt: { limit: 3, window_business_days: 5, equity_floor: 25000 },
@@ -77,15 +124,34 @@ export function config() {
   };
 }
 
+/** History of published books (Mongo only): one row per as_of_close, newest first. */
+export async function predictions(limit = 90) {
+  if (!mongoEnabled()) return { bundle: BUNDLE, source: 'files', rows: [] };
+  const db = await getDb();
+  const rows = await db.collection('predictions')
+    .find({ bundle: BUNDLE }, { projection: { data: 0 } })
+    .sort({ as_of_close: -1 })
+    .limit(Math.min(Number(limit) || 90, 1000))
+    .toArray();
+  return { bundle: BUNDLE, source: 'mongo', rows };
+}
+
+export async function prediction(asOfClose) {
+  if (!mongoEnabled()) return null;
+  const db = await getDb();
+  const doc = await db.collection('predictions').findOne({ _id: `${BUNDLE}/${asOfClose}` });
+  return doc?.data ?? null;
+}
+
 const SORTABLE_TRADE_KEYS = new Set(['ticker', 'entry_date', 'exit_date',
   'entry_price', 'exit_price', 'barrier_hit', 'holding_days', 'ensemble_rank',
   'exit_ret_net']);
 
 /** Filter + sort + paginate the trade sample (the full ledger stays on the
  *  volume). Sorting lives here because the client only ever sees one page. */
-export function queryTrades({ limit = 100, offset = 0, exit, ticker, year,
-                              minRank, outcome, sortKey, sortDir } = {}) {
-  const bundle = tradesSample();
+export async function queryTrades({ limit = 100, offset = 0, exit, ticker, year,
+                                    minRank, outcome, sortKey, sortDir } = {}) {
+  const bundle = await tradesSample();
   if (!bundle) return { rows: [], total: 0, n_ledger: 0 };
   let rows = bundle.rows;
   if (exit) rows = rows.filter((r) => r.barrier_hit === exit);

@@ -5,7 +5,8 @@
       "name": "investopedia-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["start", "--prefix", "app/backend"],
-      "port": 8787
+      "port": 8787,
+      "autoPort": true
     }
   ]
 }

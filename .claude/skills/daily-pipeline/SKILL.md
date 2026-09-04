@@ -21,7 +21,7 @@ by that full path (`SK=.claude/skills/daily-pipeline/scripts` and `$SK/pods` wor
 | `podlog <pattern> [n]` | newest matching `_pod_logs/` entry, tailed; works after the pod is gone |
 | `verify_fetch.py [FLOOR_ISO]` | per-vendor manifest check; exit 0 only if all fresh and zero hard failures |
 | `watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
-| `mirror_reports.sh` | pull results off the volume, enforce G-02, rebuild `reports/latest` |
+| `mirror_reports.sh` | pull results off the volume, enforce G-02, rebuild `reports/latest`, publish it to MongoDB |
 
 ## Before launching
 
@@ -163,8 +163,13 @@ What it pulls, and why each matters:
 | `derived/stage{1,2,3}/*_report.json` | `derived/` | dashboard gate table and verdict |
 | `derived/stage3/*.parquet` | `derived/` | equity curve and trades; only on `FULL_MIRROR=1` or if absent |
 
-It then runs `tools/build_reports.py --src derived --out reports/latest`, which is what the
-API actually serves — the app recomputes nothing.
+It then runs `tools/build_reports.py --src derived --out reports/latest` and
+`tools/publish_mongo.py --bundle reports/latest`, which copies that bundle into MongoDB Atlas
+(database `InvestOpediaClaude`) — the deployed API on Vercel serves Mongo, the Render UI
+serves the API, and the app recomputes nothing. **A run is not done until the publish step
+prints its `verify:` line with today's `as_of_close`**; until then the deployed console still
+shows the previous run. It needs `MONGO_URI`/`DB_PASSWORD` in `.env` at the repo root
+(`SKIP_PUBLISH=1` skips it deliberately).
 
 **The check that matters is G-02**: the book's `as_of_close` must equal the newest
 `eod_bulk` day-file. The script refuses to publish otherwise, because the failure it guards
@@ -175,14 +180,13 @@ fires, rerun post, market and predict rather than overriding it.
 Use `FULL_MIRROR=1` after a stage3 rerun, so the equity/trades parquets are re-pulled rather
 than kept from the previous run.
 
-To view it:
-
-```sh
-cd app/backend && npm install && npm start     # http://localhost:8787 — API + built UI
-```
+To view it: the deployed console (Render UI → Vercel API → MongoDB). Its header shows the
+bundle's `built` and `published` timestamps. Locally, `cd app/backend && npm start` serves
+the same thing from Mongo when `app/backend/.env` has the credentials (or from the
+`reports/latest` files when it does not).
 
 `reports/latest/*.json` is the whole contract with the UI, so if the pages look stale, check
-that bundle's timestamps before suspecting the app.
+that bundle's timestamps and the `published_utc` on `/api/health` before suspecting the app.
 
 `stage1`, `stage2` and `stage3` are **not** part of the daily loop — they are the research and
 backtest stages, rerun only on code/config change or the monthly cadence. The dashboard's
@@ -193,5 +197,6 @@ the stage ordering, sizing, runtimes, and the FULL_MIRROR finish.
 ## Reporting back
 
 Give the user the evidence, not reassurance: a per-vendor table of jobs/ok/fail, the exit code
-of every stage, whether today's day-file landed, the G-02 result, and the final book size. If
+of every stage, whether today's day-file landed, the G-02 result, the final book size, and the
+publish step's `verify:` line (what the deployed console now shows). If
 something failed, say which stage, what the log showed, and what you did about it.

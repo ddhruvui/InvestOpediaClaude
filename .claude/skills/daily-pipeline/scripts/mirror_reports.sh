@@ -55,4 +55,13 @@ done
 say "rebuilding reports/latest"
 python3 tools/build_reports.py --src derived --out reports/latest || {
   say "FATAL: build_reports failed"; exit 1; }
-say "DONE — serve with: (cd app/backend && npm start)  ->  http://localhost:8787"
+
+# The deployed console (Vercel API + Render UI) reads MongoDB, not this disk. Until
+# this publishes, the site still shows the previous run — so a failure here is a
+# failed run, not a warning. Needs MONGO_URI/DB_PASSWORD in .env at the repo root.
+if [ -z "${SKIP_PUBLISH:-}" ]; then
+  say "publishing reports/latest -> MongoDB"
+  python3 tools/publish_mongo.py --bundle reports/latest || {
+    say "FATAL: publish_mongo failed — the deployed console still shows the previous run"; exit 1; }
+fi
+say "DONE — the deployed console now serves this run; locally: (cd app/backend && npm start)"

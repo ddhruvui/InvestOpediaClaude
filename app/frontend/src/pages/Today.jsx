@@ -171,8 +171,8 @@ export default function Today() {
   const dueSort = useSort(t.due_exits ?? EMPTY);
 
   if (d.loading) return <Loading what="today's plan" />;
-  if (d.error) return <ErrorBox error={d.error} hint="Is the API running, and is the report bundle built?" />;
-  if (t.error) return <ErrorBox error={t.error} hint="Run the predict job, then rebuild the bundle." />;
+  if (d.error) return <ErrorBox error={d.error} hint="Is the API reachable, and has the report bundle been published?" />;
+  if (t.error) return <ErrorBox error={t.error} hint="Run the predict job, then rebuild and publish the bundle." />;
   const s = t.session;
   const nav = t.plan?.nav;
 

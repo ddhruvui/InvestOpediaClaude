@@ -38,7 +38,7 @@ ledger/trials.parquet   # every evaluated config -> DSR's N (G-09)
 
 ```sh
 scripts/daily.sh                    # one-command daily loop: fetch -> post -> market
-                                    # -> predict -> mirror -> reports/latest
+                                    # -> predict -> mirror -> reports/latest -> MongoDB
 scripts/launch_predict.sh test      # T-suite on a CPU pod (validates pod env)
 scripts/launch_predict.sh market    # eod_bulk -> m1x: whole-market panel + top-1000
                                     # survivorship-free universe (G-05). Resumable.
@@ -59,6 +59,26 @@ places; jobs are engineered to fit 4 GB.
 
 Local (mirror or synthetic): `python -m src.pipeline.stage1 --m1 <m1> --eod <data> --out <dir>`;
 `tests/make_synth_m1.py` builds a synthetic M1 layer for rehearsal.
+
+## Console (deployed)
+
+The results are **viewed through a deployed console, not this machine**:
+`tools/build_reports.py` turns the pod artifacts into `reports/latest/*.json`, and
+`tools/publish_mongo.py` pushes that bundle into MongoDB Atlas (database
+`InvestOpediaClaude`). The API on **Vercel** ([app/backend](app/backend/README.md))
+reads Mongo and owns the paper book; the UI on **Render**
+([app/frontend](app/frontend/README.md)) reads the API. Credentials live in `.env`
+(gitignored; see `.env.example`).
+
+```sh
+python3 tools/publish_mongo.py                 # reports/latest -> Mongo (daily.sh / mirror_reports.sh do this)
+scripts/publish_repos.sh                       # push main + subtree-publish app/backend, app/frontend
+```
+
+Repos: [InvestOpediaClaude](https://github.com/ddhruvui/InvestOpediaClaude) (everything),
+[InvestOpediaClaudeBE](https://github.com/ddhruvui/InvestOpediaClaudeBE) (`app/backend`, Vercel),
+[InvestOpediaClaudeFE](https://github.com/ddhruvui/InvestOpediaClaudeFE) (`app/frontend`, Render).
+The BE/FE repos are `git subtree` mirrors — edit here, then run the publish script.
 
 ## Verification status
 

@@ -11,7 +11,7 @@
 //      book — so a name already held shows as HOLD, and a held name that has
 //      dropped out of the target shows as SELL.
 import * as reports from './reports.js';
-import { state as paperState } from './paper.js';
+import { state as paperState, bookLocation } from './paper.js';
 
 const ET = 'America/New_York';
 
@@ -30,9 +30,8 @@ function nowInET(now = new Date()) {
 const CLOSE_MIN = 16 * 60;      // 16:00 ET
 const OPEN_MIN = 9 * 60 + 30;   // 09:30 ET
 
-export function sessionContext(now = new Date()) {
-  const cal = reports.readCalendar();
-  const sessions = cal?.sessions ?? [];
+/** Pure: where `now` sits relative to the NYSE session grid `sessions`. */
+export function sessionContext(now = new Date(), sessions = []) {
   const { date: todayET, minutes } = nowInET(now);
   const isSessionToday = sessions.includes(todayET);
   const todayClosed = isSessionToday && minutes >= CLOSE_MIN;
@@ -57,20 +56,20 @@ export function sessionContext(now = new Date()) {
   };
 }
 
-export function ticket(now = new Date()) {
-  const ctx = sessionContext(now);
-  const sug = reports.suggestions();
-  const cfg = reports.config();
+export async function ticket(now = new Date()) {
+  const [calendar, sug, cfg, book] = await Promise.all([
+    reports.readCalendar(), reports.suggestions(), reports.config(), paperState(),
+  ]);
+  const cal = calendar?.sessions ?? [];
+  const ctx = sessionContext(now, cal);
   if (!sug) return { session: ctx, error: 'no suggestions in the report bundle' };
 
-  const book = paperState();
   const nav = Number(book.nav) > 0 ? Number(book.nav) : 100000;
   const held = new Map();
   for (const p of book.positions) {
     if (p.status === 'open' || p.status === 'ordered') held.set(p.ticker, p);
   }
 
-  const cal = reports.readCalendar()?.sessions ?? [];
   const iNextOpen = ctx.next_open ? cal.indexOf(ctx.next_open) : -1;
   // M5.2: vertical exit is a MOO at fill + h + 1 sessions. For a not-yet-held
   // name the fill session IS the next open; for a held one it is fill_date.
@@ -199,7 +198,7 @@ export function ticket(now = new Date()) {
     buys, sells, holds, due_exits: dueExits,
     gate_warning: 'The G-11 gates on this book return ITERATE — research output, '
       + 'not a recommendation to trade.',
-    holdings_source: 'the paper book (app/backend/data/paper_book.json). Positions '
+    holdings_source: `the practice (paper) book, stored in ${bookLocation()}. Positions `
       + 'you hold elsewhere are invisible to this diff until they are recorded here.',
   };
 }

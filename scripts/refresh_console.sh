@@ -31,6 +31,9 @@ for extra in stage2/stage2_report.json stage1/stage1_report.json \
 done
 
 python3 tools/build_reports.py --src "$LOCAL" --out "reports/$BUNDLE"
+# push it to MongoDB under the same bundle name (the deployed API serves
+# REPORT_BUNDLE, default "latest"); SKIP_PUBLISH=1 to build only
+[ -n "${SKIP_PUBLISH:-}" ] || python3 tools/publish_mongo.py --bundle "reports/$BUNDLE" --name "$BUNDLE"
 
 python3 - "reports/$BUNDLE/summary.json" <<'PY'
 import json, sys
