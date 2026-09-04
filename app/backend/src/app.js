@@ -93,6 +93,8 @@ app.delete('/api/paper/:id', handle((req) => paper.removePosition(req.params.id)
 app.post('/api/paper/settings', handle((req) => paper.settings(req.body || {})));
 app.post('/api/paper/reset', handle(() => paper.reset()));
 
+// A bare hit on the deployment URL should say what this is, not "Cannot GET /".
+app.get('/', (_req, res) => res.redirect(302, '/api'));
 app.get('/api', (_req, res) => res.json({
   name: 'InvestOpediaClaude API', source: reports.source(), bundle: BUNDLE,
   routes: ['/api/health', '/api/today', '/api/summary', '/api/equity', '/api/suggestions',
