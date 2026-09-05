@@ -18,10 +18,24 @@ const app = express();
 
 // CORS_ORIGIN: comma-separated list of allowed origins (the Render UI URL),
 // or unset for any origin — the API is read-mostly and holds no secrets.
+// A single origin is passed as a string so the header is a constant rather
+// than an echo of the request's Origin.
 const origins = (process.env.CORS_ORIGIN || '*').split(',').map((s) => s.trim()).filter(Boolean);
-app.use(cors({ origin: origins.includes('*') ? true : origins }));
+app.use(cors({ origin: origins.includes('*') ? true : origins.length === 1 ? origins[0] : origins }));
 app.use(express.json({ limit: '1mb' }));
 app.disable('x-powered-by');
+
+// Never cacheable, never conditional. Vercel stamps function responses with
+// `public, max-age=0, must-revalidate` and Express adds an ETag, so a browser
+// revalidates and gets a 304 whose merged headers can carry a STALE
+// Access-Control-Allow-Origin (seen on Render: the UI's /api/health was blocked
+// with the header value of an earlier localhost visit). Everything here is
+// small and changes daily, so no-store costs nothing.
+app.set('etag', false);
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 
 const HINT = mongoEnabled()
   ? 'publish the bundle: python3 tools/publish_mongo.py --bundle reports/latest'
