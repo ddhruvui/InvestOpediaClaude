@@ -38,7 +38,7 @@ ledger/trials.parquet   # every evaluated config -> DSR's N (G-09)
 
 ```sh
 scripts/daily.sh                    # one-command daily loop: fetch -> post -> market
-                                    # -> predict -> mirror -> reports/latest -> MongoDB
+                                    # -> predict (the pod then publishes to MongoDB)
 scripts/launch_predict.sh test      # T-suite on a CPU pod (validates pod env)
 scripts/launch_predict.sh market    # eod_bulk -> m1x: whole-market panel + top-1000
                                     # survivorship-free universe (G-05). Resumable.
@@ -62,21 +62,21 @@ Local (mirror or synthetic): `python -m src.pipeline.stage1 --m1 <m1> --eod <dat
 
 ## Console (deployed)
 
-The results are **viewed through a deployed console, not this machine**:
-`tools/build_reports.py` turns the pod artifacts into `reports/latest/*.json`, and
-`tools/publish_mongo.py` pushes that bundle into MongoDB Atlas (database
-`InvestOpediaClaude`). The API on **Vercel** ([app/backend](app/backend/README.md))
-reads Mongo and owns the paper book; the UI on **Render**
-([app/frontend](app/frontend/README.md)) reads the API. Credentials live in `.env`
-(gitignored; see `.env.example`).
+The results live **in MongoDB only, viewed through the deployed console** — nothing is
+kept on this machine or in git (`reports/` is ignored). At the end of every predict run the
+pod itself turns the volume's artifacts into the report bundle
+(`tools/build_reports.py --volume /workspace`) and pushes it into MongoDB Atlas
+(`tools/publish_mongo.py`, database `InvestOpediaClaude`). The API on **Vercel**
+([app/backend](app/backend/README.md)) reads Mongo and owns the paper book; the UI on
+**Render** ([app/frontend](app/frontend/README.md)) reads the API. Credentials live in
+`data_acquisition/runpod/.env` (gitignored; see its `.env.example`).
 
 Live: **UI** https://investopediaclaudefe.onrender.com · **API**
 https://invest-opedia-claude-be.vercel.app/api/health
 
 ```sh
-scripts/launch_predict.sh publish              # (re)publish the bundle from the volume on a pod — the predict
-                                               # pod does this itself at the end of every run
-python3 tools/publish_mongo.py                 # same thing from this machine (daily.sh / mirror_reports.sh)
+scripts/launch_predict.sh publish              # re-publish "latest" from the volume (the predict pod does this itself)
+scripts/refresh_console.sh stage3_h60 h60      # publish a named research era from here (temp dir, nothing kept)
 scripts/publish_repos.sh                       # push main + subtree-publish app/backend, app/frontend
 ```
 

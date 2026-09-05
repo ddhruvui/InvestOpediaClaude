@@ -30,5 +30,6 @@ scratch*/
 node_modules/
 app/*/dist/
 app/backend/data/          # paper-book runtime state
-# reports/ IS tracked: reports/latest is the app's data bundle, reports/raw the
-# pod-report provenance, reports/*.md the human-readable finals
+# reports live in MongoDB only — the predict pod publishes them from the volume
+# (pod_bootstrap_predict.sh publish_bundle); nothing is kept here or in git
+/reports/

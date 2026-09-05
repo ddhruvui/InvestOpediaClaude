@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Publish a report bundle to MongoDB so the deployed console can serve it.
 
-    python3 tools/publish_mongo.py                              # reports/latest -> bundle "latest"
-    python3 tools/publish_mongo.py --bundle reports/top150      # -> bundle "top150"
-    python3 tools/publish_mongo.py --name latest --dry-run      # show what would change
-    python3 tools/publish_mongo.py --backfill-git               # + every past book git remembers
+    python3 tools/publish_mongo.py --bundle /workspace/reports/latest        # on the pod (bundle "latest")
+    python3 tools/publish_mongo.py --bundle <tmp>/reports/h60 --name h60     # a named era
+    python3 tools/publish_mongo.py --bundle <dir> --dry-run                  # show what would change
+    python3 tools/publish_mongo.py --bundle <dir> --backfill-git             # + every past book git remembers
 
-Runs after tools/build_reports.py (mirror_reports.sh / daily.sh call it). The
-bundle directory's *.json files are the whole contract with the UI, and this
-copies them verbatim — nothing is recomputed.
+Runs right after tools/build_reports.py — normally on the predict pod
+(pod_bootstrap_predict.sh publish_bundle), or from scripts/refresh_console.sh.
+The bundle directory's *.json files are the whole contract with the UI, and
+this copies them verbatim — nothing is recomputed. *.md files next to them
+(the human-readable book) are stored as text, so nothing needs to stay local.
 
 Credentials: MONGO_URI and DB_PASSWORD from the environment, else from .env at
 the repo root, else data_acquisition/runpod/.env. A literal <db_password>
@@ -122,7 +124,7 @@ def backfill_git(preds, bundle_dir: Path, name: str, now: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--bundle", default="reports/latest", help="bundle directory")
+    ap.add_argument("--bundle", required=True, help="bundle directory (from tools/build_reports.py)")
     ap.add_argument("--name", default=None,
                     help="bundle name in Mongo (default: the directory's basename)")
     ap.add_argument("--db", default=None, help=f"database (default {DEFAULT_DB})")
@@ -138,6 +140,7 @@ def main() -> int:
     files = sorted(bundle_dir.glob("*.json"))
     if not files:
         sys.exit(f"no *.json in {bundle_dir} — run tools/build_reports.py first")
+    md_files = sorted(bundle_dir.glob("*.md"))
 
     load_env_files()
     db_name = args.db or os.environ.get("MONGO_DB") or DEFAULT_DB
@@ -152,6 +155,11 @@ def main() -> int:
             sys.exit(f"{f}: not valid JSON ({e})")
         sections[f.stem] = {"data": data, "sha256": hashlib.sha256(raw).hexdigest(),
                             "size_bytes": len(raw)}
+
+    for f in md_files:
+        raw = f.read_bytes()
+        sections[f.stem] = {"text": raw.decode("utf-8", "replace"),
+                            "sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}
 
     manifest = sections.get("manifest", {}).get("data", {})
     built_utc = manifest.get("built_utc")
@@ -179,10 +187,14 @@ def main() -> int:
     for sec, s in sections.items():
         doc_id = f"{name}/{sec}"
         prev = reports.find_one({"_id": doc_id}, {"sha256": 1})
-        doc = {"_id": doc_id, "bundle": name, "section": sec, "data": s["data"],
+        doc = {"_id": doc_id, "bundle": name, "section": sec,
                "sha256": s["sha256"], "size_bytes": s["size_bytes"],
                "built_utc": built_utc, "published_utc": now,
                "source_host": socket.gethostname()}
+        if "data" in s:
+            doc["data"] = s["data"]
+        else:
+            doc["text"] = s["text"]; doc["kind"] = "markdown"
         if sec == "suggestions":
             doc["as_of_close"] = as_of
         reports.replace_one({"_id": doc_id}, doc, upsert=True)

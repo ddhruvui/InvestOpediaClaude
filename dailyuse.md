@@ -268,8 +268,8 @@ network volume as the fetchers; local execution is for unit tests and synthetic 
 
 ```sh
 scripts/daily.sh                    # THE daily loop, one command: fetch -> post ->
-                                    #   market -> predict -> mirror -> reports/latest
-                                    #   (SKIP_FETCH=1 / REFIT=full / FULL_MIRROR=1)
+                                    #   market -> predict (pod publishes to MongoDB)
+                                    #   (SKIP_FETCH=1 / REFIT=full)
 
 scripts/launch_predict.sh test      # T-01..T-15 suite on a CPU pod (validates pod env)
 scripts/launch_predict.sh market    # eod_bulk -> m1x whole-market panel + top-1000
@@ -310,10 +310,10 @@ after any `configs/system.yaml` change, feature-set change, or on the 21-session
 **The whole loop is one command: `scripts/daily.sh`** (start ~22:00 UTC / 18:00 ET; EODHD's
 bulk day-file lands ~23:30 UTC and the fetch should finish before midnight UTC). It
 sequences fetch → post (waits for the pod AND verifies m1 was rebuilt *today*) →
-market → predict (each watched to completion via `watch_jobs.sh`, one auto-relaunch)
-→ mirrors `suggestions.json`/`.md` + stage reports off the volume → rebuilds
-`reports/latest`. `SKIP_FETCH=1` when data is already in; `FULL_MIRROR=1` after a
-stage3 rerun to re-pull the equity/trades parquets. Stage 1/2/3 are the
+market → predict (each watched to completion via `watch_jobs.sh`, one auto-relaunch).
+The predict pod then publishes the console bundle from the volume straight to MongoDB,
+and `daily.sh` ends by confirming `publish=0` in its log — nothing is mirrored to this
+machine. `SKIP_FETCH=1` when data is already in. Stage 1/2/3 are the
 research/backtest reports — they only need re-running when code or config changes,
 or on the monthly cadence to refresh the G-11 gate verdict; they are deliberately
 NOT part of `daily.sh`. (`overnight_orchestrator.sh` and `finalize_overnight.sh`
@@ -337,19 +337,19 @@ are one-offs from the initial build, not the daily loop.)
 
 ## Research console (reports + paper trading)
 
-Final reports live in **`reports/`** — `RUN_REPORT.md` and `suggestions_latest.md`
-are the human-readable finals, `reports/latest/*.json` is the machine bundle the
-app serves, `reports/raw/` keeps the pod stage-reports for provenance.
+Reports live **in MongoDB only** (database `InvestOpediaClaude`): the predict pod builds
+the bundle from the volume and publishes it at the end of every run, and the human-readable
+book (`suggestions_latest.md`) is stored there as text too. Nothing is kept in this repo
+or on this machine. View it on the deployed console (Render UI → Vercel API → MongoDB).
 
 ```sh
-# refresh the bundle after a pipeline run (pods write to the volume; this only reads)
-aws s3 cp $S3FLAGS s3://$RUNPOD_VOLUME_ID/derived/stage3/ derived/ --recursive
-aws s3 cp $S3FLAGS s3://$RUNPOD_VOLUME_ID/derived/predict/suggestions.json derived/
-python3 tools/build_reports.py --src derived --out reports/latest
-python3 tools/publish_mongo.py --bundle reports/latest    # -> MongoDB, what the deployed console reads
+# re-publish "latest" from the volume without re-running the model (2-vCPU pod, < 1 min)
+scripts/launch_predict.sh publish
+# publish a named research era from here (staged in a temp dir, nothing kept)
+scripts/refresh_console.sh stage3_h60 h60
 
-# serve it
-cd app/backend && npm install && npm start      # local only; the real console is Render UI -> Vercel API -> MongoDB
+# serve it locally (reads the same Mongo; app/backend/.env holds the credentials)
+cd app/backend && npm install && npm start      # the real console is Render UI -> Vercel API -> MongoDB
 cd app/frontend && npm run dev                  # hot-reload UI on :5173, proxies /api
 cd app/backend && npm test                      # paper-book regression suite
 ```

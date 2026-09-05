@@ -45,20 +45,20 @@ Ask for these back, and treat anything missing as not-done:
 - `validate exit=0` **and** `build_m1 exit=0`, with an `m1/_manifest.json` from this run
 - `market job=0`, `predict job=0`
 - **G-02**: `suggestions.json`'s `as_of_close` equals the newest day-file
-- (optional, for the git record) results mirrored to this machine — `derived/suggestions.json`,
-  `reports/suggestions_latest.md` and `reports/latest/` dated today — plus the book size
+- The book size, from the predict log's `suggestions written:` line
 - **Published to MongoDB by the predict pod** — its log ends with `publish=0` after
   `verify: ... suggestions.as_of_close=<today's close>`; the deployed console shows the
   previous run until this happens (`scripts/launch_predict.sh publish` re-publishes)
 
-The pods write to the network volume, not to your disk — until the mirror step runs there is
-nothing local to look at and the UI still shows the previous run. If you only want that last
-step, say so rather than re-running the pipeline:
+Nothing lands on this machine: the pods write to the network volume, and the predict pod
+publishes the console bundle to MongoDB itself. If only that last step failed, say so rather
+than re-running the pipeline:
 
-> Everything already ran on the pods. Just pull the results down, rebuild the reports bundle, and publish it.
+> Predict already ran on the pod. Just re-publish the bundle to MongoDB.
 
-Then view it on the deployed console (Render UI → Vercel API → MongoDB). The header shows
-the `published` timestamp, so a stale page is obvious.
+(That is `scripts/launch_predict.sh publish` — a 2-vCPU pod, under a minute.) Then view it on
+the deployed console (Render UI → Vercel API → MongoDB). The header shows the `published`
+timestamp, so a stale page is obvious.
 
 A pod exiting is not evidence a stage succeeded — a stage can be OOM-killed (`exit=-9`) while
 its pod still self-terminates normally and leaves yesterday's output in place. Ask for exit

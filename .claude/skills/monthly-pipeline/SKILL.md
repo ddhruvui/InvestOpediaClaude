@@ -70,21 +70,20 @@ watchdog allows 18 h, so a long quiet stretch is not a hang; read the log before
 anything. Success check per stage: `$SK/podlog "predict-stage1" 5` ends in `job=0`, and fresh
 `*_report.json` files land under `derived/stage1|stage2|stage3/` on the volume.
 
-## Finish: FULL_MIRROR, rebuild, commit
+## Finish: publish from the volume
 
-The daily mirror deliberately skips the heavy stage3 parquets when they already exist — after
-a stage3 rerun that default would keep serving LAST month's equity curve and trades. So:
+Reports live in MongoDB only — nothing is mirrored or committed. Once stage3's `job=0` is in,
+re-publish the console bundle from the volume; the pod reads the fresh
+`derived/stage{1,2,3}/*_report.json` and stage3 equity/trades parquets directly:
 
 ```sh
-FULL_MIRROR=1 .claude/skills/daily-pipeline/scripts/mirror_reports.sh
+scripts/launch_predict.sh publish       # 2-vCPU pod, under a minute; log ends publish=0
 ```
 
-That re-pulls `derived/stage{1,2,3}/*_report.json` AND the stage3 equity/trades parquets,
-then rebuilds `reports/latest` (the whole contract with the UI) and publishes it to MongoDB
-for the deployed console. Verify the dashboard bundle
-moved: `reports/latest/manifest.json` `built_utc` is from this run and `summary.json`'s
-verdict/gate rows changed date. Then commit the refreshed `derived/` + `reports/` files, as
-the daily mirror commits do.
+Verify the dashboard moved: `curl -s <vercel>/api/health` shows a `built_utc` from this run,
+and the site's Dashboard verdict/gate rows carry the new numbers. A named era
+(`OUT_DIR=/workspace/derived/stage3_h60`) is published from this machine instead, staged in
+a temp dir: `scripts/refresh_console.sh stage3_h60 h60`.
 
 ## Caveats worth knowing before comparing numbers
 

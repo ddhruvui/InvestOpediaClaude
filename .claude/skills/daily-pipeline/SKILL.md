@@ -21,7 +21,6 @@ by that full path (`SK=.claude/skills/daily-pipeline/scripts` and `$SK/pods` wor
 | `podlog <pattern> [n]` | newest matching `_pod_logs/` entry, tailed; works after the pod is gone |
 | `verify_fetch.py [FLOOR_ISO]` | per-vendor manifest check; exit 0 only if all fresh and zero hard failures |
 | `watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
-| `mirror_reports.sh` | OPTIONAL local mirror: pull results off the volume, enforce G-02, rebuild `reports/latest`, (re)publish to MongoDB — the predict pod already publishes on its own |
 
 ## Before launching
 
@@ -173,54 +172,18 @@ scripts/launch_predict.sh publish      # 2-vCPU pod, a few minutes; same three l
 ```
 
 `watch_jobs.sh` prints a loud `PUBLISH FAILED` line for this case but treats the job as
-done, so `daily.sh` continues into its local mirror step, which re-publishes from here.
+done; `daily.sh` then fails at its final check with the same re-publish command.
 
-### Optional: mirror locally (git record)
-
-Nothing the pods produced is on this machine — they write to the network volume and to
-Mongo. If you also want the bundle in the repo (the daily `reports/latest` commits), run:
-
-```sh
-.claude/skills/daily-pipeline/scripts/mirror_reports.sh
-```
-
-It downloads the artifacts into `./derived`, re-runs G-02, rebuilds `reports/latest` and
-publishes it again (idempotent — Mongo reports `unchanged`). Do **not** run
-`scripts/daily.sh` for this: that is the full loop and would redo an hour of work.
-
-What it pulls, and why each matters:
-
-| from the volume | to local | why |
-|---|---|---|
-| `derived/predict/suggestions.json` | `derived/suggestions.json` | the book; the run exists to produce it |
-| `derived/predict/suggestions.md` | `reports/suggestions_latest.md` | human-readable book |
-| `m1/sessions.parquet` | `derived/sessions.parquet` | session grid the UI calendar needs |
-| `derived/stage{1,2,3}/*_report.json` | `derived/` | dashboard gate table and verdict |
-| `derived/stage3/*.parquet` | `derived/` | equity curve and trades; only on `FULL_MIRROR=1` or if absent |
-
-It then runs `tools/build_reports.py --src derived --out reports/latest` and
-`tools/publish_mongo.py --bundle reports/latest` (the same two steps the pod ran), using
-`MONGO_URI`/`DB_PASSWORD` from `runpod/.env`; `SKIP_PUBLISH=1` skips the publish.
-
-**The check that matters is G-02**: the book's `as_of_close` must equal the newest
-`eod_bulk` day-file. The script refuses to publish otherwise, because the failure it guards
-is silent — EODHD publishes the bulk file late (~19:30 ET), so a chain that built m1 too
-early scores the *prior* close and every downstream number still looks plausible. If it
-fires, rerun post, market and predict rather than overriding it.
-
-Use `FULL_MIRROR=1` after a stage3 rerun, so the equity/trades parquets are re-pulled rather
-than kept from the previous run.
-
-`reports/latest/*.json` is the whole contract with the UI, so if the pages look stale, check
-`published_utc` / `as_of_close` on `/api/health` before suspecting the app. Locally,
-`cd app/backend && npm start` serves the same thing from Mongo when `app/backend/.env` has
-the credentials.
+Nothing is kept on this machine: the pods write to the network volume and to MongoDB, and
+`reports/` is not in the repo. If the pages look stale, check `published_utc` / `as_of_close`
+on `/api/health` before suspecting the app. Locally, `cd app/backend && npm start` serves the
+same Mongo data when `app/backend/.env` has the credentials.
 
 `stage1`, `stage2` and `stage3` are **not** part of the daily loop — they are the research and
 backtest stages, rerun only on code/config change or the monthly cadence. The dashboard's
 verdict and trade counts come from their existing reports, so seeing unchanged numbers there
 is expected, not a bug. When they ARE due, use the **`monthly-pipeline`** skill — it carries
-the stage ordering, sizing, runtimes, and the FULL_MIRROR finish.
+the stage ordering, sizing, runtimes, and the publish-from-volume finish.
 
 ## Reporting back
 

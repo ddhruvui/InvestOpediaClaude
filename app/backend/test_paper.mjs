@@ -96,12 +96,15 @@ fs.rmSync(process.env.PAPER_DATA_DIR, { recursive: true, force: true });
 
 /* --- session logic: the ticket must point at the right open --- */
 const { sessionContext } = await import('./src/today.js');
-const reports = await import('./src/reports.js');
-const sessions = (await reports.readCalendar())?.sessions;
+// NYSE session grid for the cases below: weekdays Aug–Oct 2026 minus Labor Day (Sep 7).
+const sessions = [];
+for (const d = new Date('2026-08-03T00:00:00Z'); d < new Date('2026-11-01T00:00:00Z');
+     d.setUTCDate(d.getUTCDate() + 1)) {
+  const iso = d.toISOString().slice(0, 10);
+  if (![0, 6].includes(d.getUTCDay()) && iso !== '2026-09-07') sessions.push(iso);
+}
 console.log('session context');
-if (!sessions) {
-  console.log('  (skipped — no calendar.json in the local report bundle)');
-} else {
+{
   const cases = [
     // [UTC instant, expected next_open, label]
     ['2026-08-23T16:00:00Z', '2026-08-24', 'Sunday afternoon -> Monday open'],

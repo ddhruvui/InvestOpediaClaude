@@ -38,8 +38,8 @@ app.use('/api', (_req, res, next) => {
 });
 
 const HINT = mongoEnabled()
-  ? 'publish the bundle: python3 tools/publish_mongo.py --bundle reports/latest'
-  : 'build the bundle: python3 tools/build_reports.py --src derived --out reports/latest';
+  ? 'the predict pod publishes the bundle after each run; to redo just that: scripts/launch_predict.sh publish'
+  : 'no MONGO_URI: point REPORTS_DIR at a bundle built by tools/build_reports.py, or set MONGO_URI';
 
 /** Async route -> JSON; null data from a named section is a 503 with a hint. */
 const handle = (fn, name) => async (req, res) => {

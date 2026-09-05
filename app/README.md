@@ -11,34 +11,31 @@ app/
 
 ## Where the numbers come from
 
-Nothing is recomputed in the app. `tools/build_reports.py` reads the artifacts the
-RunPod jobs wrote (`derived/`) and emits `reports/latest/*.json`;
-`tools/publish_mongo.py` copies those files verbatim into MongoDB Atlas (database
-`InvestOpediaClaude`, collection `reports`, one document per section, plus a
-`predictions` document per `as_of_close` as history). The API slices that. So a
-number on screen always equals the number the pipeline produced — the API cannot
-drift from it.
+Nothing is recomputed in the app, and nothing is kept locally. On the predict pod,
+`tools/build_reports.py --volume /workspace` reads the artifacts the RunPod jobs wrote
+and emits the report bundle; `tools/publish_mongo.py` copies those files verbatim into
+MongoDB Atlas (database `InvestOpediaClaude`, collection `reports`, one document per
+section, plus a `predictions` document per `as_of_close` as history). The API slices
+that. So a number on screen always equals the number the pipeline produced — the API
+cannot drift from it.
 
 ```
-pods -> derived/ -> build_reports.py -> reports/latest/*.json -> publish_mongo.py -> MongoDB
-                                                                                       |
-                                                Render UI  <-- Vercel API  <-----------+
+predict pod: volume artifacts -> build_reports.py -> publish_mongo.py -> MongoDB
+                                                                           |
+                                        Render UI  <-- Vercel API  <-------+
 ```
 
 ## Refresh after a pipeline run
 
-The predict pod does this itself: after writing `suggestions.json` it runs the G-02
-freshness check, `build_reports.py --volume /workspace`, and `publish_mongo.py`
-(`scripts/launch_predict.sh publish` re-runs just that step on a small pod). Nothing
-needs to be downloaded. From this machine, the equivalent is
-`.claude/skills/daily-pipeline/scripts/mirror_reports.sh`, or by hand:
+Automatic: the predict pod runs the G-02 freshness check, the build and the publish at
+the end of every run (its log ends `publish=0`). To redo just that step from the volume:
 
 ```bash
-python3 tools/build_reports.py --src derived --out reports/latest
-python3 tools/publish_mongo.py --bundle reports/latest      # needs MONGO_URI/DB_PASSWORD in .env
+scripts/launch_predict.sh publish              # 2-vCPU pod, under a minute
+scripts/refresh_console.sh stage3_h60 h60      # a named research era, staged in a temp dir here
 ```
 
-Until the publish step runs, the deployed console shows the previous run.
+Until a publish lands, the deployed console shows the previous run.
 
 ## Deploy
 
@@ -56,7 +53,7 @@ commit, then `scripts/publish_repos.sh`. Per-directory READMEs have the details.
 ## Run locally (dev / tests)
 
 ```bash
-cp app/backend/.env.example app/backend/.env      # Mongo creds; omit to fall back to reports/latest files
+cp app/backend/.env.example app/backend/.env      # Mongo creds (the only data source now)
 cd app/backend && npm install && npm start        # http://localhost:8787 (API + built UI if frontend/dist exists)
 cd app/frontend && npm install && npm run dev     # http://localhost:5173, /api proxied to 8787
 cd app/frontend && npm run build                  # or build once and let the API serve it
