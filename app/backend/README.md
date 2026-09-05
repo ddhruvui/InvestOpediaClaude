@@ -1,5 +1,8 @@
 # InvestOpediaClaude — backend
 
+Live at https://invest-opedia-claude-be.vercel.app (`/api/health`), serving the UI at
+https://investopediaclaudefe.onrender.com.
+
 Read-only API over the pipeline's published report bundle, plus the paper-trading
 book (BP15). The numbers come from MongoDB, where `tools/publish_mongo.py` in the
 main repo puts them after every pipeline run — nothing is recomputed here.
@@ -44,7 +47,7 @@ npm run test:mongo       # smoke test against the real database
 1. Import the `InvestOpediaClaudeBE` repo as a Vercel project (framework preset:
    **Other**; root directory: the repo root; no build command needed).
 2. Add environment variables `MONGO_URI`, `DB_PASSWORD`, and `CORS_ORIGIN` (the
-   Render UI origin, e.g. `https://investopediaclaude-fe.onrender.com`).
+   Render UI origin, `https://investopediaclaudefe.onrender.com`).
 3. In Atlas → Network Access, allow `0.0.0.0/0` (Vercel functions have no fixed IP).
 4. Deploy. `vercel.json` rewrites every path to `api/index.js`, which exports the
    Express app, so `https://<project>.vercel.app/api/health` should answer.

@@ -39,6 +39,8 @@ Until the publish step runs, the deployed console shows the previous run.
 
 ## Deploy
 
+Live: UI https://investopediaclaudefe.onrender.com · API https://invest-opedia-claude-be.vercel.app/api/health
+
 | piece | where | how | config |
 |---|---|---|---|
 | `backend/` | Vercel | import the `InvestOpediaClaudeBE` repo, preset *Other* | `MONGO_URI`, `DB_PASSWORD`, `CORS_ORIGIN` |

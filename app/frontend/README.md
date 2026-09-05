@@ -1,5 +1,8 @@
 # InvestOpediaClaude — frontend
 
+Live at https://investopediaclaudefe.onrender.com, talking to the API at
+https://invest-opedia-claude-be.vercel.app.
+
 React + Vite console over the backend API: Today (broker ticket), Dashboard
 (G-11 verdict, equity curve), Suggestions, Backtest explorer, Paper trading.
 
@@ -13,7 +16,7 @@ One variable, read at **build** time:
 
 | var | meaning |
 |---|---|
-| `VITE_API_BASE` | backend origin, e.g. `https://investopediaclaude-be.vercel.app`. Unset = same origin (dev proxy / backend-served build). |
+| `VITE_API_BASE` | backend origin, `https://invest-opedia-claude-be.vercel.app`. Unset = same origin (dev proxy / backend-served build). |
 
 ## Run locally
 

@@ -70,6 +70,9 @@ reads Mongo and owns the paper book; the UI on **Render**
 ([app/frontend](app/frontend/README.md)) reads the API. Credentials live in `.env`
 (gitignored; see `.env.example`).
 
+Live: **UI** https://investopediaclaudefe.onrender.com · **API**
+https://invest-opedia-claude-be.vercel.app/api/health
+
 ```sh
 python3 tools/publish_mongo.py                 # reports/latest -> Mongo (daily.sh / mirror_reports.sh do this)
 scripts/publish_repos.sh                       # push main + subtree-publish app/backend, app/frontend
