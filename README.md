@@ -74,7 +74,9 @@ Live: **UI** https://investopediaclaudefe.onrender.com · **API**
 https://invest-opedia-claude-be.vercel.app/api/health
 
 ```sh
-python3 tools/publish_mongo.py                 # reports/latest -> Mongo (daily.sh / mirror_reports.sh do this)
+scripts/launch_predict.sh publish              # (re)publish the bundle from the volume on a pod — the predict
+                                               # pod does this itself at the end of every run
+python3 tools/publish_mongo.py                 # same thing from this machine (daily.sh / mirror_reports.sh)
 scripts/publish_repos.sh                       # push main + subtree-publish app/backend, app/frontend
 ```
 

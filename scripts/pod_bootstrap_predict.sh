@@ -41,6 +41,40 @@ else
     export REFIT="${REFIT:-auto}"
     mkdir -p "$OUT_DIR"
 
+    # Publish: build the console bundle from the volume and push it to MongoDB, so the
+    # deployed site (Render UI -> Vercel API -> Mongo) updates without anything being
+    # downloaded to a laptop. Runs after a successful predict, or as JOB=publish.
+    publish_bundle() {
+      echo "--- publish: volume -> reports bundle -> MongoDB ($(date -u +%FT%TZ))"
+      [ -n "${MONGO_URI:-}" ] || { echo "publish: MONGO_URI not set — skipping"; return 3; }
+      # G-02: the book must be scored off the NEWEST day-file. EODHD publishes the bulk
+      # file late (~19:30 ET); a chain that built m1 before it landed scores the prior
+      # close and every downstream number still looks plausible.
+      timeout 300 python - <<'PY' || return 4
+import json, os, re, sys
+sug = "/workspace/derived/predict/suggestions.json"
+try:
+    as_of = json.load(open(sug))["as_of_close"]
+except Exception as e:
+    print(f"publish: cannot read {sug}: {e}"); sys.exit(1)
+try:
+    days = sorted(f[:-5] for f in os.listdir("/workspace/data/eod_bulk/US")
+                  if re.fullmatch(r"\d{4}-\d{2}-\d{2}\.json", f))
+except OSError as e:
+    print(f"publish: cannot list day-files: {e}"); days = []
+latest = days[-1] if days else None
+if latest and as_of != latest:
+    print(f"publish: G-02 FAIL as_of_close={as_of} but newest day-file is {latest} — "
+          "refusing to publish a stale book; rerun post, market, predict"); sys.exit(1)
+print(f"publish: G-02 OK as_of_close={as_of} newest day-file={latest}")
+PY
+      local BUNDLE_NAME="${REPORT_BUNDLE:-latest}" OUT="/workspace/reports/${REPORT_BUNDLE:-latest}"
+      timeout 900 python tools/build_reports.py --volume /workspace --out "$OUT" || return 5
+      timeout 600 python tools/publish_mongo.py --bundle "$OUT" --name "$BUNDLE_NAME" || return 6
+      # keep the human-readable book next to the bundle on the volume
+      cp -f /workspace/derived/predict/suggestions.md "$OUT/suggestions_latest.md" 2>/dev/null || true
+    }
+
     case "${JOB:-stage1}" in
       test)    timeout 3600  python -m pytest tests/ -q ;;
       market)  timeout 28800 python src/data/build_market.py ;;
@@ -58,9 +92,19 @@ else
                  ${USE_MARKET:+--market "$MARKET_DIR"} ;;
       predict) timeout 14400 python -m src.pipeline.predict --m1 "$M1_DIR" --eod "$EOD_DIR" \
                  --out "$OUT_DIR" ${USE_MARKET:+--market "$MARKET_DIR"} ;;
+      publish) publish_bundle ;;
       *) echo "unknown JOB '$JOB'" ;;
     esac
     ec=$?
+    # predict's own exit code stays `job=`; the publish result is its own line so a Mongo
+    # hiccup never triggers a re-run of the model (watch_jobs.sh reads both).
+    if [ "${JOB:-}" = "predict" ] && [ $ec -eq 0 ] && [ "${PUBLISH:-1}" = "1" ]; then
+      publish_bundle; pec=$?
+      echo "publish=$pec ($([ $pec -eq 0 ] && echo 'MongoDB updated — deployed console is current' \
+        || echo 'FAILED — deployed console still shows the previous run; run: scripts/launch_predict.sh publish'))"
+    elif [ "${JOB:-}" = "publish" ]; then
+      echo "publish=$ec ($([ $ec -eq 0 ] && echo 'MongoDB updated' || echo 'FAILED'))"
+    fi
   else
     echo "FATAL: bundle unpack failed — proceeding to terminate"
     ec=97

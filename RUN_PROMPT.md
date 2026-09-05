@@ -45,11 +45,11 @@ Ask for these back, and treat anything missing as not-done:
 - `validate exit=0` **and** `build_m1 exit=0`, with an `m1/_manifest.json` from this run
 - `market job=0`, `predict job=0`
 - **G-02**: `suggestions.json`'s `as_of_close` equals the newest day-file
-- Results pulled **down to this machine** — `derived/suggestions.json` and
-  `reports/suggestions_latest.md` present and dated today
-- `reports/latest/` rebuilt (that bundle is the whole contract with the UI), plus the book size
-- **Published to MongoDB** — `publish_mongo.py` printed `verify: ... suggestions.as_of_close=<today's close>`;
-  the deployed console shows the previous run until this happens
+- (optional, for the git record) results mirrored to this machine — `derived/suggestions.json`,
+  `reports/suggestions_latest.md` and `reports/latest/` dated today — plus the book size
+- **Published to MongoDB by the predict pod** — its log ends with `publish=0` after
+  `verify: ... suggestions.as_of_close=<today's close>`; the deployed console shows the
+  previous run until this happens (`scripts/launch_predict.sh publish` re-publishes)
 
 The pods write to the network volume, not to your disk — until the mirror step runs there is
 nothing local to look at and the UI still shows the previous run. If you only want that last

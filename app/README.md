@@ -27,8 +27,11 @@ pods -> derived/ -> build_reports.py -> reports/latest/*.json -> publish_mongo.p
 
 ## Refresh after a pipeline run
 
-`.claude/skills/daily-pipeline/scripts/mirror_reports.sh` (or `scripts/daily.sh`)
-does all of this; by hand:
+The predict pod does this itself: after writing `suggestions.json` it runs the G-02
+freshness check, `build_reports.py --volume /workspace`, and `publish_mongo.py`
+(`scripts/launch_predict.sh publish` re-runs just that step on a small pod). Nothing
+needs to be downloaded. From this machine, the equivalent is
+`.claude/skills/daily-pipeline/scripts/mirror_reports.sh`, or by hand:
 
 ```bash
 python3 tools/build_reports.py --src derived --out reports/latest

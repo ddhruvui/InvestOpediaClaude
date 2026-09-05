@@ -18,7 +18,18 @@ check_job() {  # $1=job  $2=relaunched-flag-file ; echo status: running|done|fai
     say "$j: latest log predates this launch — pod still booting"; echo running; return
   fi
   TAIL=$(aws s3 cp $S3FLAGS "$BUCKET/_pod_logs/$LOG" - 2>/dev/null | tail -5)
-  if echo "$TAIL" | grep -q "job=0"; then say "$j SUCCEEDED ($LOG)"; echo done; return; fi
+  if echo "$TAIL" | grep -q "job=0"; then
+    # predict publishes to MongoDB after the model runs; a failed publish is NOT a failed
+    # model run, so it is reported loudly but never auto-relaunches predict.
+    if echo "$TAIL" | grep -qE "publish=[1-9]"; then
+      say "!! $j job=0 but PUBLISH FAILED ($LOG) — deployed console is stale; run: scripts/launch_predict.sh publish"
+    elif echo "$TAIL" | grep -q "publish=0"; then
+      say "$j SUCCEEDED and published to MongoDB ($LOG)"
+    else
+      say "$j SUCCEEDED ($LOG)"
+    fi
+    echo done; return
+  fi
   if echo "$TAIL" | grep -qE "job=[0-9]"; then
     say "$j FAILED ($LOG): $(echo "$TAIL" | head -1 | cut -c1-100)"
     if [ ! -f "$flag" ]; then

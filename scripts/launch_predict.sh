@@ -4,7 +4,9 @@
 #   scripts/launch_predict.sh market    # build whole-market panel + universe (m1x) — CPU
 #   scripts/launch_predict.sh stage1    # Stage-1 pipeline (features->LGBM->backtest->gates) — CPU
 #   scripts/launch_predict.sh stage2    # Stage-2 GRU+CNN+FinBERT — GPU
-#   scripts/launch_predict.sh predict   # latest-date scores -> target book -> suggestions — CPU
+#   scripts/launch_predict.sh predict   # latest-date scores -> target book -> suggestions — CPU,
+#                                       # then publishes the console bundle to MongoDB itself
+#   scripts/launch_predict.sh publish   # (re)publish the bundle from the volume to MongoDB — CPU, minutes
 #
 # USE_MARKET=1 (default) points stage1/predict at the m1x whole-market universe;
 # KEEP_POD=1 leaves the pod alive for inspection. Reuses data_acquisition's .env.
@@ -12,9 +14,16 @@
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 JOB="${1:-stage1}"
-case "$JOB" in test|market|stage1|stage2|stage3|predict|exp) ;; *)
-  echo "unknown job '$JOB' (test|market|stage1|stage2|stage3|predict|exp)" >&2; exit 2 ;; esac
+case "$JOB" in test|market|stage1|stage2|stage3|predict|exp|publish) ;; *)
+  echo "unknown job '$JOB' (test|market|stage1|stage2|stage3|predict|exp|publish)" >&2; exit 2 ;; esac
 : "${RUNPOD_API_KEY:?set in data_acquisition/runpod/.env}"
+# The deployed console reads MongoDB; predict/publish pods write it directly (no laptop hop).
+if [ -z "${MONGO_URI:-}" ]; then
+  case "$JOB" in
+    publish) echo "MONGO_URI not set in data_acquisition/runpod/.env — nothing to publish to" >&2; exit 2 ;;
+    predict) echo "WARN: MONGO_URI not in runpod/.env — predict will run but NOT publish to MongoDB" >&2 ;;
+  esac
+fi
 
 DC="${RUNPOD_DATACENTER:-EU-RO-1}"
 CPU_IMAGE="${RUNPOD_IMAGE:-python:3.11-slim}"
@@ -22,6 +31,7 @@ GPU_IMAGE="${RUNPOD_GPU_IMAGE:-runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubun
 FLAVORS="${RUNPOD_CPU_FLAVORS:-[\"cpu3c\",\"cpu3g\",\"cpu3m\",\"cpu5c\",\"cpu5g\",\"cpu5m\"]}"
 GPU_TYPES="${RUNPOD_GPU_TYPES:-[\"NVIDIA GeForce RTX 4090\",\"NVIDIA RTX A5000\",\"NVIDIA A40\"]}"
 VCPU="${RUNPOD_VCPU:-8}"        # stage1/market hold multi-GB panels: 8 vCPU -> 16 GB
+[ "$JOB" = "publish" ] && VCPU="${RUNPOD_VCPU:-2}"   # publish reads a few MB: smallest pod
 # Container disk is host-local scratch; all data lives on the network volume, so this only
 # holds the image + pip deps (~2 GB). It is a real placement constraint: EU-RO-1 refused
 # 20 GB at every vCPU count on 2026-08-27 while 10 GB placed instantly. (The GPU path keeps
@@ -35,7 +45,7 @@ CPU_DISK="${RUNPOD_CONTAINER_DISK_GB:-10}"
 # runs the CPU image + CPU pip set, not the PyTorch image. GPU_FALLBACK=0 disables.
 GPU_FALLBACK="${GPU_FALLBACK:-1}"
 GPU_FALLBACK_TYPES="${RUNPOD_GPU_FALLBACK_TYPES:-NVIDIA RTX A4500|NVIDIA RTX 4000 Ada Generation|NVIDIA GeForce RTX 3090|NVIDIA RTX A6000|NVIDIA GeForce RTX 4090|NVIDIA A40}"
-PIP_CPU="pandas pyarrow numpy PyYAML scipy lightgbm scikit-learn optuna pytest"
+PIP_CPU="pandas pyarrow numpy PyYAML scipy lightgbm scikit-learn optuna pytest pymongo certifi"
 PIP_GPU="pandas pyarrow numpy PyYAML scipy lightgbm scikit-learn optuna pytest transformers==4.44.2 sentencepiece"
 
 RUNNING=$(curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
@@ -48,7 +58,7 @@ echo "Bundling prediction stack ..."
 TMP_TGZ="$(mktemp -t predict-bundle).tgz"
 ( cd "$REPO_ROOT" && tar czf "$TMP_TGZ" \
     --exclude='__pycache__' --exclude='.pytest_cache' \
-    src configs tests requirements.txt )
+    src configs tests tools requirements.txt )
 if [ -n "${DRY_RUN:-}" ]; then
   echo "DRY_RUN: would upload $(du -h "$TMP_TGZ" | cut -f1) bundle + bootstrap; launch $JOB pod"
   exit 0
@@ -57,8 +67,15 @@ aws s3 cp $S3FLAGS "$TMP_TGZ" "$BUCKET/code/predict/bundle.tgz"
 aws s3 cp $S3FLAGS "$REPO_ROOT/scripts/pod_bootstrap_predict.sh" "$BUCKET/code/predict/bootstrap.sh"
 rm -f "$TMP_TGZ"
 
+# JSON-escape the Mongo values: a password may hold quotes or backslashes.
+jesc() { printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1], end="")'; }
 ENV_COMMON=$(cat <<JSON
     "JOB": "${JOB}",
+    "MONGO_URI": "$(jesc "${MONGO_URI:-}")",
+    "DB_PASSWORD": "$(jesc "${DB_PASSWORD:-}")",
+    "MONGO_DB": "${MONGO_DB:-}",
+    "REPORT_BUNDLE": "${REPORT_BUNDLE:-latest}",
+    "PUBLISH": "${PUBLISH:-1}",
     "USE_MARKET": "${USE_MARKET:-1}",
     "KEEP_POD": "${KEEP_POD:-}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
@@ -166,3 +183,7 @@ printf '%s\tpredict-%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$JOB" "$POD_ID" 
 echo "launched predict-${JOB} pod: ${POD_ID}  [${PLACED_ON}]"
 echo "watch:   data_acquisition/scripts/storage_usage.sh | grep -E '_pod_logs|derived'"
 echo "fetch:   aws s3 cp \$S3FLAGS $BUCKET/derived/${JOB}/ ./derived_${JOB}/ --recursive"
+case "$JOB" in predict|publish)
+  echo "publish: the pod pushes the console bundle to MongoDB itself — confirm 'publish=0' and the"
+  echo "         'verify: ... suggestions.as_of_close=' line in its _pod_logs entry" ;;
+esac

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Pull the run's artifacts off the volume into ./derived, enforce the G-02 freshness
-# guard, and rebuild reports/latest for the UI.
+# OPTIONAL local mirror. The predict pod already publishes the console bundle to MongoDB
+# from the volume (pod_bootstrap_predict.sh publish_bundle); run this when you also want
+# the artifacts and reports/latest in this repo (the daily git record), or to re-publish
+# from here after a failed pod publish. Pulls the run's artifacts into ./derived, enforces
+# the G-02 freshness guard, rebuilds reports/latest and publishes it (idempotent).
 #
-# This is the ONLY thing that has to run after predict. Do NOT reach for scripts/daily.sh
-# here — that re-runs the whole pipeline (fetch, post, market, predict) and would redo an
-# hour of work to accomplish a two-minute copy.
+# Do NOT reach for scripts/daily.sh here — that re-runs the whole pipeline (fetch, post,
+# market, predict) and would redo an hour of work to accomplish a two-minute copy.
 #
 #   FULL_MIRROR=1   also re-pull the stage-3 parquets (MBs; only change on a stage3 rerun)
 set -u

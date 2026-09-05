@@ -21,7 +21,7 @@ by that full path (`SK=.claude/skills/daily-pipeline/scripts` and `$SK/pods` wor
 | `podlog <pattern> [n]` | newest matching `_pod_logs/` entry, tailed; works after the pod is gone |
 | `verify_fetch.py [FLOOR_ISO]` | per-vendor manifest check; exit 0 only if all fresh and zero hard failures |
 | `watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
-| `mirror_reports.sh` | pull results off the volume, enforce G-02, rebuild `reports/latest`, publish it to MongoDB |
+| `mirror_reports.sh` | OPTIONAL local mirror: pull results off the volume, enforce G-02, rebuild `reports/latest`, (re)publish to MongoDB — the predict pod already publishes on its own |
 
 ## Before launching
 
@@ -132,26 +132,61 @@ Then, in order — `market` builds the panel `predict` consumes:
 
 ```sh
 scripts/launch_predict.sh market      # then confirm job=0 before continuing
-scripts/launch_predict.sh predict
+scripts/launch_predict.sh predict     # ends by publishing the console bundle to MongoDB
 ```
+
+**`predict` publishes the results itself.** After the model writes `suggestions.json`, the
+same pod runs the G-02 freshness check against the volume, builds the console bundle
+(`tools/build_reports.py --volume /workspace`) and pushes it to MongoDB Atlas
+(`tools/publish_mongo.py`). The Vercel API serves Mongo and the Render UI serves the API, so
+the deployed console is current the moment the pod log shows it — nothing is downloaded to
+this machine. The pod gets `MONGO_URI`/`DB_PASSWORD` from `runpod/.env`.
 
 `launch_predict.sh` does not verify startup, so after each launch confirm a
 `<ts>-predict-<job>-<podid>.log` appears in `_pod_logs/` within ~3 min. If it never does, the
 pod landed on a broken host: it will bill indefinitely while reporting RUNNING, so DELETE it and
 relaunch. Never size these below 4 vCPU — 4 GB OOMs them.
 
-## Finish: pull the results down for the UI
+## Finish: confirm the publish
 
-Nothing the pods produced is on your machine yet — they write to the network volume. This
-step copies the artifacts into `./derived`, checks them, and rebuilds the bundle the app
-serves. It is the only thing that needs to run after `predict`:
+The run is done when the predict pod's log carries **all three** of these:
+
+```sh
+.claude/skills/daily-pipeline/scripts/podlog predict-predict 30
+```
+
+- `job=0` — the model ran
+- `publish: G-02 OK as_of_close=<today's close> newest day-file=<same>`
+- `publish=0` right after `verify: reports=8 docs for 'latest', predictions history=N,
+  suggestions.as_of_close=<today's close>` — the bundle is in MongoDB
+
+Then the deployed console (Render UI → Vercel API → Mongo) already shows it; its header's
+`published` timestamp is the proof. `curl -s <vercel>/api/health` returns the same
+`published_utc` / `as_of_close` if you want it without a browser.
+
+If `job=0` but `publish=<non-zero>`, the model is fine and only the push failed (Mongo
+unreachable, G-02 stale book, a missing stage report). Do **not** rerun predict. Read the
+`publish:` lines, fix the cause, then re-publish from the volume on a small pod:
+
+```sh
+scripts/launch_predict.sh publish      # 2-vCPU pod, a few minutes; same three log lines
+```
+
+`watch_jobs.sh` prints a loud `PUBLISH FAILED` line for this case but treats the job as
+done, so `daily.sh` continues into its local mirror step, which re-publishes from here.
+
+### Optional: mirror locally (git record)
+
+Nothing the pods produced is on this machine — they write to the network volume and to
+Mongo. If you also want the bundle in the repo (the daily `reports/latest` commits), run:
 
 ```sh
 .claude/skills/daily-pipeline/scripts/mirror_reports.sh
 ```
 
-Do **not** run `scripts/daily.sh` for this. That is the full loop — it would re-run fetch,
-post, market and predict, redoing an hour of work to accomplish a two-minute copy.
+It downloads the artifacts into `./derived`, re-runs G-02, rebuilds `reports/latest` and
+publishes it again (idempotent — Mongo reports `unchanged`). Do **not** run
+`scripts/daily.sh` for this: that is the full loop and would redo an hour of work.
 
 What it pulls, and why each matters:
 
@@ -164,12 +199,8 @@ What it pulls, and why each matters:
 | `derived/stage3/*.parquet` | `derived/` | equity curve and trades; only on `FULL_MIRROR=1` or if absent |
 
 It then runs `tools/build_reports.py --src derived --out reports/latest` and
-`tools/publish_mongo.py --bundle reports/latest`, which copies that bundle into MongoDB Atlas
-(database `InvestOpediaClaude`) — the deployed API on Vercel serves Mongo, the Render UI
-serves the API, and the app recomputes nothing. **A run is not done until the publish step
-prints its `verify:` line with today's `as_of_close`**; until then the deployed console still
-shows the previous run. It needs `MONGO_URI`/`DB_PASSWORD` in `.env` at the repo root
-(`SKIP_PUBLISH=1` skips it deliberately).
+`tools/publish_mongo.py --bundle reports/latest` (the same two steps the pod ran), using
+`MONGO_URI`/`DB_PASSWORD` from `runpod/.env`; `SKIP_PUBLISH=1` skips the publish.
 
 **The check that matters is G-02**: the book's `as_of_close` must equal the newest
 `eod_bulk` day-file. The script refuses to publish otherwise, because the failure it guards
@@ -180,13 +211,10 @@ fires, rerun post, market and predict rather than overriding it.
 Use `FULL_MIRROR=1` after a stage3 rerun, so the equity/trades parquets are re-pulled rather
 than kept from the previous run.
 
-To view it: the deployed console (Render UI → Vercel API → MongoDB). Its header shows the
-bundle's `built` and `published` timestamps. Locally, `cd app/backend && npm start` serves
-the same thing from Mongo when `app/backend/.env` has the credentials (or from the
-`reports/latest` files when it does not).
-
 `reports/latest/*.json` is the whole contract with the UI, so if the pages look stale, check
-that bundle's timestamps and the `published_utc` on `/api/health` before suspecting the app.
+`published_utc` / `as_of_close` on `/api/health` before suspecting the app. Locally,
+`cd app/backend && npm start` serves the same thing from Mongo when `app/backend/.env` has
+the credentials.
 
 `stage1`, `stage2` and `stage3` are **not** part of the daily loop — they are the research and
 backtest stages, rerun only on code/config change or the monthly cadence. The dashboard's
@@ -198,5 +226,5 @@ the stage ordering, sizing, runtimes, and the FULL_MIRROR finish.
 
 Give the user the evidence, not reassurance: a per-vendor table of jobs/ok/fail, the exit code
 of every stage, whether today's day-file landed, the G-02 result, the final book size, and the
-publish step's `verify:` line (what the deployed console now shows). If
+predict pod's `publish=0` + `verify:` line (what the deployed console now shows). If
 something failed, say which stage, what the log showed, and what you did about it.

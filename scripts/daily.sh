@@ -63,7 +63,7 @@ if [ -z "${DRY_RUN:-}" ]; then
   scripts/watch_jobs.sh market || { say "FATAL: market failed twice"; exit 1; }
 fi
 
-say "3/5 predict: continual warm update (REFIT=${REFIT:-auto})"
+say "3/5 predict: continual warm update (REFIT=${REFIT:-auto}); the pod publishes to MongoDB itself"
 export WATCH_SINCE=$(date -u +%Y%m%dT%H%M%SZ)
 scripts/launch_predict.sh predict
 if [ -z "${DRY_RUN:-}" ]; then
@@ -72,7 +72,7 @@ fi
 
 [ -n "${DRY_RUN:-}" ] && { say "DRY_RUN: skipping mirror + reports"; exit 0; }
 
-say "4/5 mirror: pulling report inputs off the volume"
+say "4/5 mirror: pulling report inputs off the volume (local git record + fallback publish)"
 mkdir -p derived
 mirror() { aws s3 cp $S3FLAGS "$BUCKET/$1" "$2" >/dev/null 2>&1; }
 mirror derived/predict/suggestions.json derived/suggestions.json \

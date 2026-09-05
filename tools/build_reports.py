@@ -16,6 +16,7 @@ The heavy ledger (hundreds of thousands of barrier trades) never reaches the
 browser: aggregates + a recent slice do.
 
     python3 tools/build_reports.py --src derived --out reports/latest
+    python3 tools/build_reports.py --volume /workspace --out /workspace/reports/latest   # on a pod
 """
 from __future__ import annotations
 
@@ -30,6 +31,33 @@ import pandas as pd
 
 MAX_EQUITY_POINTS = 1500      # ~19y of daily -> weekly-ish; keeps the payload small
 TRADE_SAMPLE = 4000           # most recent trades exposed to the table
+
+# Where each input lives on the RunPod volume. `--volume /workspace` stages them into
+# one flat directory (symlinks), which is the layout mirror_reports.sh produces locally.
+VOLUME_LAYOUT = {
+    "suggestions.json": "derived/predict/suggestions.json",
+    "sessions.parquet": "m1/sessions.parquet",
+    "stage1_report.json": "derived/stage1/stage1_report.json",
+    "stage1_report_clean.json": "derived/stage1/stage1_report_clean.json",
+    "stage2_report.json": "derived/stage2/stage2_report.json",
+    "stage3_report.json": "derived/stage3/stage3_report.json",
+    "stage3_final_report.json": "derived/stage3/stage3_final_report.json",
+    "stage3_equity.parquet": "derived/stage3/stage3_equity.parquet",
+    "stage3_daily_net.parquet": "derived/stage3/stage3_daily_net.parquet",
+    "stage3_trades_ungated.parquet": "derived/stage3/stage3_trades_ungated.parquet",
+}
+
+
+def stage_from_volume(volume: Path) -> Path:
+    import tempfile
+    staging = Path(tempfile.mkdtemp(prefix="bundle_src_"))
+    for name, rel in VOLUME_LAYOUT.items():
+        src = volume / rel
+        if src.exists():
+            (staging / name).symlink_to(src)
+        else:
+            print(f"-- volume: {rel} absent (that section will be omitted)")
+    return staging
 
 
 def _read_json(p: Path):
@@ -71,6 +99,14 @@ def build_summary(src: Path) -> tuple[dict, dict]:
     s2 = _read_json(src / "stage2_report.json")
     s3 = _read_json(src / "stage3_report.json") or _read_json(src / "stage3_final_report.json")
     s3_cpcv = _read_json(src / "stage3_final_report.json")
+    if s3 and s3_cpcv and s3_cpcv is not s3:
+        same_era = ((s3_cpcv.get("stamp") or {}).get("config_hash")
+                    == (s3.get("stamp") or {}).get("config_hash"))
+        if not same_era:
+            print("-- stage3_final_report.json is from another era (config "
+                  f"{(s3_cpcv.get('stamp') or {}).get('config_hash', '?')[:12]} vs "
+                  f"{(s3.get('stamp') or {}).get('config_hash', '?')[:12]}) — ignoring its CPCV")
+            s3_cpcv = None
 
     # The ensemble stage (stage2) owns member/IC/baseline truth; stage3 owns the
     # deployed book (barrier exits + overlays) and the CPCV distribution.
@@ -297,13 +333,17 @@ def build_trades(src: Path) -> tuple[dict | None, dict | None]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default="derived", help="dir with pod artifacts")
+    ap.add_argument("--src", default="derived", help="flat dir with pod artifacts")
+    ap.add_argument("--volume", default=None,
+                    help="RunPod volume root (e.g. /workspace): stage inputs from its layout")
     ap.add_argument("--out", default="reports/latest")
     args = ap.parse_args()
-    src, out = Path(args.src), Path(args.out)
+    src = stage_from_volume(Path(args.volume)) if args.volume else Path(args.src)
+    out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     manifest = {"built_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "source_dir": str(src), "sections": {}}
+                "source_dir": f"volume:{args.volume}" if args.volume else str(src),
+                "sections": {}}
 
     summary, prov = build_summary(src)
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
