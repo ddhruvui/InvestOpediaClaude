@@ -1,6 +1,6 @@
 ---
 name: monthly-pipeline
-description: Run the monthly research/backtest refresh — stage1 (LGBM gates), stage2 (GRU+CNN+FinBERT on GPU), stage3 (meta gate + barrier book + CPCV) — then FULL_MIRROR the results and rebuild the dashboard bundle. Use this whenever the user asks for the monthly run, to rerun stage1/stage2/stage3, to refresh the G-11 gate verdict, the equity curve, or the backtest, or after a code/config change that invalidates the stage reports. NOT for the nightly loop (that is daily-pipeline) and NOT for the model's 21-session full refit (that happens automatically inside the daily predict job).
+description: Run the monthly research/backtest refresh — stage1 (LGBM gates), stage2 (GRU+CNN+FinBERT on GPU), stage3 (meta gate + barrier book + CPCV) — then publish the results from the volume to MongoDB for the dashboard. Use this whenever the user asks for the monthly run, to rerun stage1/stage2/stage3, to refresh the G-11 gate verdict, the equity curve, or the backtest, or after a code/config change that invalidates the stage reports. NOT for the nightly loop (that is daily-pipeline) and NOT for the model's 21-session full refit (that happens automatically inside the daily predict job).
 ---
 
 # Monthly pipeline: the stage1–3 refresh
