@@ -22,6 +22,12 @@ by that full path (`SK=.claude/skills/daily-pipeline/scripts` and `$SK/pods` wor
 | `verify_fetch.py [FLOOR_ISO]` | per-vendor manifest check; exit 0 only if all fresh and zero hard failures |
 | `watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
 
+Reaping is a repo-root script, not one of these: `data_acquisition/scripts/reap_pods.sh`
+deletes a pod once that pod's OWN log shows its job finished. `scripts/daily.sh` runs it
+in the background for the whole run, so a hand-driven launch is the case that needs it —
+start `reap_pods.sh --watch` alongside the watchdog, or run it bare for a one-pass status.
+Do NOT use `killpod.sh` mid-run: it kills every pod, including ones still working.
+
 ## Before launching
 
 Check these — each has burned a real run:
@@ -73,6 +79,12 @@ and is always the long pole; `post` then takes ~7 min once its gate clears.
 A `STALL` line means the pod is alive but its log has not grown — read the log before acting;
 it may be a slow vendor rather than a hang. `post` is deliberately exempt, because it prints
 its gate line once and then polls in silence for as long as the fetchers take.
+
+A pod that stays up AFTER its log ends in `fetch=<rc>` / `job=<rc>` has failed to delete
+itself. That is not cosmetic: RunPod relaunches the container, so the job RE-RUNS every
+~5 min (calendar and finbert each ran 5x on 2026-09-09, burning vendor calls), and the
+next night `launch.sh` skips that vendor as "already running". Reap it —
+`data_acquisition/scripts/reap_pods.sh` — rather than waiting it out.
 
 ## Verify the downloads
 

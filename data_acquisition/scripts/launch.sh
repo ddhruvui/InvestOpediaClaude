@@ -321,4 +321,4 @@ if [ -n "$FAILED" ]; then
   exit 1
 fi
 [ -n "$DRY_RUN" ] && exit 0
-echo "Check data later with: scripts/download.sh   (safety net if it doesn't die: scripts/killpod.sh)"
+echo "Check data later with: scripts/download.sh   (if a pod outlives its job: scripts/reap_pods.sh)"

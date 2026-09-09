@@ -20,7 +20,8 @@ data_acquisition/
 │   ├── fetch.py            EODHD fetcher   (scripts/launch.sh          -> data/)
 │   ├── fetch_nasdaq.py     Sharadar fetcher (scripts/launch.sh nasdaq  -> data_nasdaq/)
 │   ├── fetch_tiingo.py     Tiingo fetcher  (scripts/launch.sh tiingo   -> data_tiingo/)
-│   └── bootstrap.sh        pod entrypoint: run $FETCH_SCRIPT under an 8h watchdog, then self-terminate
+│   └── bootstrap.sh        pod entrypoint: run $FETCH_SCRIPT under an 8h watchdog, then try to self-terminate
+│                            (best effort — reap_pods.sh is what guarantees the pod dies)
 └── scripts/                shared across vendors — download/clear/storage_usage/killpod are vendor-agnostic
     ├── _common.sh          loads runpod/.env, sets S3 flags + bucket (sourced by the rest)
     ├── launch.sh [vendor]   STORE:    upload the vendor's fetcher+config, create the pod(s)
@@ -28,7 +29,9 @@ data_acquisition/
     ├── download.sh         DOWNLOAD: mirror volume → repo root (data/ + data_nasdaq/ + data_tiingo/, skips code/)
     ├── storage_usage.sh    VIEW:     list volume contents + object count & size
     ├── clear_storage.sh    CLEAN:    wipe the volume (or just --logs)
-    └── killpod.sh          safety net: terminate any investopediaclaude-* pod that didn't self-terminate
+    ├── reap_pods.sh        reaper: delete each pod once ITS OWN log shows its job finished (safe mid-run)
+    ├── test_reap_pods.sh   unit test for reap_pods.sh's decision logic (no pod/volume/API touched)
+    └── killpod.sh          blunt safety net: terminate EVERY investopediaclaude-* pod, finished or not
 ```
 
 **Vendor selection:** `scripts/launch.sh` runs EODHD (`fetch.py` → `data/`); `scripts/launch.sh nasdaq`

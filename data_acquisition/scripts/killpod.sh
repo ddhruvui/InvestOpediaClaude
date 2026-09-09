@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Safety net: terminate any leftover "investopediaclaude-*" pods (eodhd, nasdaq, …) that failed
-# to self-terminate. Lists pods via the account API and DELETEs each match. Run this if launch.sh
-# reported a pod but it never died (or just run it periodically).
+# BLUNT safety net: terminate EVERY "investopediaclaude-*" pod, whether or not its job has
+# finished. That makes it unsafe mid-run — it will kill a fetcher three hours into a cold
+# pull. Prefer scripts/reap_pods.sh, which deletes a pod only after reading its log and
+# seeing the job finish. Use this one only to clear the decks when nothing should be up.
+#
+# The DELETE below sends an explicit User-Agent: Cloudflare fronts rest.runpod.io and
+# answers 403 "error code: 1010" to the default `Python-urllib/*` signature, which silently
+# broke this script (and every pod's self-termination) on 2026-09-09.
 . "$(dirname "$0")/_common.sh"
 : "${RUNPOD_API_KEY:?account rpa_ key, set in runpod/.env}"
 
@@ -18,6 +23,7 @@ for p in pods:
     pid = p.get("id")
     req = u.Request("https://rest.runpod.io/v1/pods/" + pid, method="DELETE")
     req.add_header("Authorization", "Bearer " + key)
+    req.add_header("User-Agent", "investopediaclaude-killpod/1.0")
     try:
         st = u.urlopen(req, timeout=30).status
         print(f"deleted {pid} ({p.get(\"desiredStatus\")}) -> {st}")
@@ -25,6 +31,8 @@ for p in pods:
     except urllib.error.HTTPError as e:
         if e.code == 404:
             print(f"already gone {pid}")
+        elif e.code == 403:
+            print(f"FAILED {pid}: HTTP 403 — Cloudflare blocked the User-Agent", file=sys.stderr)
         else:
             print(f"FAILED {pid}: HTTP {e.code}", file=sys.stderr)
     except Exception as e:

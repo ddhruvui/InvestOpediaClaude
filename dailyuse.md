@@ -137,7 +137,17 @@ data_acquisition/scripts/clear_storage.sh
 #    Logs only (leave data + code intact):
 data_acquisition/scripts/clear_storage.sh --logs        # add -y to skip confirm
 
-# Safety net: kill any investopediaclaude-* pod that failed to self-terminate (normally never needed)
+# Reap: delete pods whose job has FINISHED, read off their own logs on the volume.
+# scripts/daily.sh runs this in the background for the whole run, so normally you never
+# need it by hand — reach for it when a pod outlives its job (they lost the ability to
+# delete themselves on 2026-09-09) or to see at a glance what every pod is doing.
+data_acquisition/scripts/reap_pods.sh              # one pass: report all pods, reap the finished
+data_acquisition/scripts/reap_pods.sh --dry-run    # report only, delete nothing
+data_acquisition/scripts/reap_pods.sh --watch      # keep polling
+data_acquisition/scripts/reap_pods.sh --force <id> # delete one pod without reading its log
+
+# Blunt safety net: kill EVERY investopediaclaude-* pod, finished or not. Unsafe mid-run —
+# it will kill a fetcher hours into a cold pull. Prefer reap_pods.sh.
 data_acquisition/scripts/killpod.sh
 ```
 

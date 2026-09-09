@@ -34,6 +34,12 @@ check_job() {  # $1=job  $2=relaunched-flag-file ; echo status: running|done|fai
     say "$j FAILED ($LOG): $(echo "$TAIL" | head -1 | cut -c1-100)"
     if [ ! -f "$flag" ]; then
       touch "$flag"; say "auto-relaunching $j once..."
+      # The failed pod must go FIRST. launch_predict.sh skips a job whose pod name is
+      # already running, and the loop below reads that skip ("already running") as a
+      # successful relaunch — so a pod that failed but did not die would silently eat
+      # the one retry we get. Pods stopped being able to delete themselves on
+      # 2026-09-09, which is exactly when that stopped being hypothetical.
+      data_acquisition/scripts/reap_pods.sh --reap-failed "predict-$j" >&2 || true
       local i OUT
       for i in $(seq 1 30); do
         OUT=$(RUNPOD_VCPU=8 scripts/launch_predict.sh "$j" 2>&1 | tail -2)

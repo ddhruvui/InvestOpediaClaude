@@ -3,7 +3,7 @@
 to a Monitor without flooding it:
 
     UP <name>       pod appeared
-    DONE <name>     pod gone (self-terminated)
+    DONE <name>     pod gone (self-terminated, or reaped by reap_pods.sh)
     STALL <name>    pod alive but its _pod_logs entry has not grown for STALL_CHECKS polls
     IDLE            no pods running (printed once per idle stretch)
 
@@ -82,7 +82,7 @@ while True:
             stale[name] = 0
         size[name] = sz
     for name in prev - set(cur):
-        out(f"DONE  {name} — pod gone (self-terminated)")
+        out(f"DONE  {name} — pod gone")
         seen.discard(name)
     prev = set(cur)
     if not cur:
