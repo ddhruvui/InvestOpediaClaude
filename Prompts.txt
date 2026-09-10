@@ -1,7 +1,0 @@
-did the downloaded data match our requirements? is everything   good? verify new data downloaded? are there errors that need to be fixed? did we download all data as required in Data Acquisition Specification — FINAL v1.2.md? did we miss out on anything / needs to be fixed / needs subscription ? help in tabular format of what all was covered. Also do we need more runs to cover all data required?
-
-run launch
-
-can something for D14 be extracted from shardar
-
-Which ones need more run to cover up data? is there a way to download historical D-14 analyst estimates
