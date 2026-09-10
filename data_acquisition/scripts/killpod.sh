@@ -24,9 +24,12 @@ for p in pods:
     req = u.Request("https://rest.runpod.io/v1/pods/" + pid, method="DELETE")
     req.add_header("Authorization", "Bearer " + key)
     req.add_header("User-Agent", "investopediaclaude-killpod/1.0")
+    # Bound to a name first: an escaped quote inside an f-string expression is a
+    # SyntaxError before Python 3.12, which made this whole script fail to parse.
+    desired = p.get("desiredStatus")
     try:
         st = u.urlopen(req, timeout=30).status
-        print(f"deleted {pid} ({p.get(\"desiredStatus\")}) -> {st}")
+        print(f"deleted {pid} ({desired}) -> {st}")
         killed += 1
     except urllib.error.HTTPError as e:
         if e.code == 404:
