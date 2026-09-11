@@ -8,9 +8,9 @@
     "metadata"
   ],
   "symbol_list": true,
-  "min_request_interval_sec": 2,
-  "max_requests_per_run": 2000,
-  "skip_fresh_days": 0,
+  "min_request_interval_sec": 72,
+  "max_requests_per_run": 700,
+  "skip_fresh_days": 30,
   "market": [
     "SPY"
   ],

@@ -58,12 +58,16 @@ The sidecar records, per output file, the `from` a successful full fetch actuall
 file whose recorded window already contains the configured window is covered, no matter where its
 rows start. Widening `from` still triggers exactly one refetch per name (which re-records).
 
-TWO-ACCOUNT SPLIT (optional): set TIINGO_API_TOKEN2 and the universe is split half/half — the FIRST
-half of "stocks" (list order) always uses token 1, the SECOND half always token 2, and the halves
-are interleaved so each token paces its own ≈50 req/hr window (combined throughput doubles). The
-split is POSITIONAL and must stay stable across runs within a month: the 500-unique-symbols cap is
-sticky per account, so a ticker that switched accounts would burn a slot on both. market/symbol_list
-jobs stay on token 1. With one token set, behavior is unchanged.
+MULTI-ACCOUNT SPLIT (optional): set TIINGO_API_TOKEN2..TOKEN9 and the universe is divided equally
+across every token present — contiguous slices of "stocks" in list order (sizes differ by at most
+one; the earliest slices carry the extra), round-robin interleaved so each token paces its own
+≈50 req/hr window and combined throughput scales with the account count. With three tokens a
+506-name universe splits 169/169/168.
+
+The split is POSITIONAL and must stay stable across runs within a month: the 500-unique-symbols cap
+is sticky per account, so a ticker that switched accounts would burn a slot on both. Adding or
+removing a token reshuffles every assignment — do it at a month boundary, not mid-month.
+market/symbol_list jobs stay on token 1. With one token set, behavior is unchanged.
 
 Self-termination is bootstrap.sh's job, so this runs/tests locally:
 
@@ -78,6 +82,7 @@ Exit code: 0 if every job succeeded (deferred jobs are NOT failures), 1 otherwis
 import csv
 import http.client
 import io
+import itertools
 import json
 import os
 import ssl
@@ -95,8 +100,10 @@ from datetime import date, datetime, timezone
 # day, the data starts on the first SESSION on or after it. Slack absorbs a New Year/holiday
 # weekend without masking a real widening, which always moves the window by months or years.
 STALE_GAP_TOLERANCE_DAYS = int(os.environ.get("TIINGO_STALE_GAP_DAYS", "14"))
-TOKENS = [t for t in (os.environ.get("TIINGO_API_TOKEN", "").strip(),
-                      os.environ.get("TIINGO_API_TOKEN2", "").strip()) if t]
+# TIINGO_API_TOKEN, then TIINGO_API_TOKEN2..TOKEN9. Every token set divides the universe one more
+# way, so a further account needs no code change — only a new var and a slot in launch.sh's env map.
+TOKENS = [t for t in [os.environ.get("TIINGO_API_TOKEN", "").strip()]
+          + [os.environ.get(f"TIINGO_API_TOKEN{i}", "").strip() for i in range(2, 10)] if t]
 DATA_DIR = os.environ.get("DATA_DIR", "/workspace/data_tiingo")
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/workspace/code/tiingo.json")
 API = "https://api.tiingo.com"
@@ -490,12 +497,20 @@ def main():
     # Two tokens => stable half/half split (POSITIONAL — the monthly unique-symbol cap is sticky per
     # account, so the mapping must not move within a month) + interleave so each token paces its own
     # rate window. One token => everything on token 1, original order.
-    if len(TOKENS) == 2 and stocks:
-        half = (len(stocks) + 1) // 2
-        tok_of = {t: (0 if i < half else 1) for i, t in enumerate(stocks)}
-        a, b = stocks[:half], stocks[half:]
-        ordered = [t for pair in zip(a, b) for t in pair] + (a[len(b):] or b[len(a):])
-        log(f"two-token split: {len(a)} tickers on token 1, {len(b)} on token 2 (interleaved)")
+    if len(TOKENS) > 1 and stocks:
+        k = len(TOKENS)
+        base, rem = divmod(len(stocks), k)      # the first `rem` chunks carry one extra ticker
+        chunks, at = [], 0
+        for i in range(k):
+            size = base + (1 if i < rem else 0)
+            chunks.append(stocks[at:at + size])
+            at += size
+        tok_of = {t: i for i, c in enumerate(chunks) for t in c}
+        # Round-robin so each token paces its own rate window instead of idling while another works.
+        ordered = [t for grp in itertools.zip_longest(*chunks) for t in grp if t is not None]
+        log(f"{k}-token split: "
+            + ", ".join(f"{len(c)} on token {i + 1}" for i, c in enumerate(chunks))
+            + " (positional, interleaved)")
     else:
         tok_of = {t: 0 for t in stocks}
         ordered = stocks

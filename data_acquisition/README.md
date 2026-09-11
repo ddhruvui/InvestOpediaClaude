@@ -232,18 +232,23 @@ its manifest instead of dying at the 8h watchdog. The **`_coverage.json` sidecar
 whose rows can never reach `from=2000-01-01` is not re-pulled full every night — that trap is what
 burned account 2's monthly bandwidth. Widening `from` still refetches each name exactly once.
 `market` (SPY) is fetched FIRST so the budget never starves it.
-**Current operating mode (since 2026-08-21):** account 1 is on the **paid tier** and runs the whole
-universe single-token (`TIINGO_API_TOKEN2` is parked in `.env` — the free second account is over its
-monthly bandwidth until Sep 1, and with one paid token the split only adds free-tier caps back in).
-`datasets` now includes `metadata` (the D-13 coverage cross-check) and pacing is 2s. If you ever
-drop back to two free accounts: restore `TIINGO_API_TOKEN2`, set pacing back to 72, and drop
-`max_requests_per_run` accordingly.
+**Current operating mode (since 2026-09-11):** **three free accounts**
+(`TIINGO_API_TOKEN`, `TIINGO_API_TOKEN2`, `TIINGO_API_TOKEN3`), universe divided equally and
+positionally — 506 names split 169 / 169 / 168 (`A..ES`, `ESS..NRG`, `NSC..ZTS`). Pacing is back to
+72s, `max_requests_per_run` to 700 and `skip_fresh_days` to 30; `datasets` keeps `metadata` (the
+D-13 coverage cross-check). Every free limit has headroom: 50 req/hr per token exactly, 233
+req/day against 1,000, and 169 unique symbols/month against 500.
 
-**Two-account split:** with `TIINGO_API_TOKEN2` set, the first half of `stocks` is pinned to
-token 1 and the second half to token 2 (positional and sticky within a month — the unique-symbol
-cap is per account, so a ticker must not switch accounts mid-month), interleaved for ~100 req/hr
-combined: 252 + 251 symbols + SPY keeps both accounts under the cap and the whole universe
-completes in a single ~5 h run.
+The paid single-token mode ran 2026-08-21 → 2026-09-11 (pacing 2s, cap 2000, `skip_fresh_days` 0).
+
+**Multi-account split:** with `TIINGO_API_TOKEN2..TOKEN9` set, `stocks` is cut into that many
+contiguous slices in list order (sizes differ by at most one; the earliest slices carry the extra)
+and round-robin interleaved, so each token holds its own ~50 req/hr window and combined throughput
+scales with the account count. The mapping is positional and sticky within a month — the
+unique-symbol cap is per account, so a ticker must not switch accounts mid-month, and **adding or
+removing a token reshuffles every assignment** (do it at a month boundary). `market` (SPY) and
+`symbol_list` stay on token 1. Three accounts: 169 + 169 + 168 symbols, ~4.7 h to spend the 700
+budget, two runs for a cold full refresh.
 
 ## Tiingo storage layout on the volume
 

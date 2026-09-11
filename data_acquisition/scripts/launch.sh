@@ -210,6 +210,7 @@ launch_vendor() {
   "env": {
     "${TOKEN_VAR}": "${TOKEN_VAL}",
     "TIINGO_API_TOKEN2": "${TIINGO_API_TOKEN2:-}",
+    "TIINGO_API_TOKEN3": "${TIINGO_API_TOKEN3:-}",
     "FETCH_SCRIPT": "${FETCH_SCRIPT}",
     "CONFIG_PATH": "/workspace/code/${CONFIG_FILE}",
     "DATA_DIR": "/workspace/${DATA_SUBDIR}",
