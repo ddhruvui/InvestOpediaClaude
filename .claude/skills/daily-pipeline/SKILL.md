@@ -103,6 +103,13 @@ Then confirm the session that just closed actually landed:
 
 Tiingo `DEFER` entries are budget deferrals, not failures — they resume next run.
 
+The three `…/watchlist` trees are the data-only watchlist (`config/watchlist_*.json`), fetched
+inside the eodhd/nasdaq/tiingo pods BEFORE their main pass — each of those pod logs shows a
+`watchlist=<rc>` line, and a watchlist failure also turns the final `fetch=` nonzero. They must be
+FRESH with `fail=0` like the rest, but nothing downstream reads them, so a watchlist failure is
+never a reason to hold post/market/predict. They add ~12 min to the tiingo pod every night (13
+symbols refetched daily at 72 s pacing), so tiingo no longer exits in ~25 s on a skip-fresh night.
+
 `finbert` reporting `added=0` is normal, not a shirked job: it only verifies the pinned
 model files (size+sha) are on the volume, so a warm run adds nothing.
 

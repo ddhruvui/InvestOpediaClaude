@@ -14,7 +14,9 @@ import json, os, subprocess, sys
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TREES = ["data", "data_nasdaq", "data_tiingo", "data_borrow", "data_calendar", "data_finbert"]
+TREES = ["data", "data_nasdaq", "data_tiingo", "data_borrow", "data_calendar", "data_finbert",
+         # data-only watchlist passes (config/watchlist_*.json), run inside the vendor pods
+         "data/watchlist", "data_nasdaq/watchlist", "data_tiingo/watchlist"]
 FLOOR = sys.argv[1] if len(sys.argv) > 1 else None
 TMP = os.environ.get("TMPDIR", "/tmp")
 
@@ -34,7 +36,7 @@ for tree in TREES:
     r = subprocess.run([os.path.join(HERE, "vol"), "cp", f"{tree}/_run.json", dst, "--quiet"],
                        capture_output=True, text=True)
     if r.returncode != 0:
-        print(f"{tree:16s} MANIFEST MISSING"); stale.append(tree); continue
+        print(f"{tree:22s} MANIFEST MISSING"); stale.append(tree); continue
     d = json.load(open(dst))
     ended = d.get("ended_at", "")
     e = ts(ended)
@@ -48,17 +50,17 @@ for tree in TREES:
                 if isinstance(x.get("added"), (int, float)))
     if not fresh:
         stale.append(tree)
-    print(f"{tree:16s} {'FRESH' if fresh else 'STALE':6s} ended={ended:32s} "
+    print(f"{tree:22s} {'FRESH' if fresh else 'STALE':6s} ended={ended:32s} "
           f"jobs={len(res):5d} ok={ok:5d} fail={len(bad):4d} added={added}")
     # Tiingo logs budget overruns as DEFER: non-fatal by design, resumed next run.
     defer = [x for x in bad if "DEFER" in str(x.get("error", "")).upper()]
     hard = [x for x in bad if x not in defer]
     if defer:
-        print(f"{'':16s}   deferred(budget)={len(defer)}  (non-fatal, resumes next run)")
+        print(f"{'':22s}   deferred(budget)={len(defer)}  (non-fatal, resumes next run)")
     for x in hard[:12]:
-        print(f"{'':16s}   FAIL {x.get('symbol')}/{x.get('dataset')}: {str(x.get('error'))[:110]}")
+        print(f"{'':22s}   FAIL {x.get('symbol')}/{x.get('dataset')}: {str(x.get('error'))[:110]}")
     if len(hard) > 12:
-        print(f"{'':16s}   ... +{len(hard) - 12} more")
+        print(f"{'':22s}   ... +{len(hard) - 12} more")
     if hard:
         failed.append((tree, len(hard)))
 

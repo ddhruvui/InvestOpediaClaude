@@ -44,13 +44,38 @@ else
       || echo "!! pip install failed — the fetcher will report the missing import"
   fi
 
-  # 8h watchdog: a cold full-universe pass (EODHD prices+divs+splits+fundamentals+estimates+news, or
-  # Sharadar SEP+SF1+ACTIONS, for ~500 tickers) runs several hours; a bulk backfill can run longer.
-  # This bounds a hung fetch without cutting a legitimate long backfill short.
-  # VALIDATE_ARGS is the one job that takes CLI flags (validate.py --repair); every fetcher ignores
-  # extra argv, so passing it unconditionally is harmless. Unquoted on purpose: it is a flag list.
-  timeout 28800 python "/workspace/code/${FETCH_SCRIPT:-fetch.py}" ${VALIDATE_ARGS:-}
-  ec=$?
+  # WATCHLIST PASS. launch.sh sets WATCH_CONFIG for eodhd/nasdaq/tiingo: the SAME fetcher runs once
+  # more against config/watchlist_<vendor>.json, into $DATA_DIR/watchlist/ — names acquired nightly
+  # but held out of M1 and the models, because nothing downstream reads that subtree.
+  # FIRST, not last: EODHD's main pass sizes its bulk backfill to the credits left when it starts,
+  # so the watchlist's spend has to be on the counter already — run after a backfill had drained the
+  # day, fetch.py's credit preflight would skip it. MIN_CREDITS drops to what the watchlist needs.
+  # Its own 1h watchdog, so a stuck watchlist cannot eat the main run's window.
+  # WATCHLIST_ONLY=1 skips the main pass: backfill or refresh just the watchlist.
+  wec=""
+  if [ -n "${WATCH_CONFIG:-}" ] && [ -n "${DATA_DIR:-}" ] && [ -f "/workspace/code/${WATCH_CONFIG}" ]; then
+    echo "watchlist pass: config=/workspace/code/${WATCH_CONFIG} data_dir=${DATA_DIR}/watchlist"
+    CONFIG_PATH="/workspace/code/${WATCH_CONFIG}" DATA_DIR="${DATA_DIR}/watchlist" \
+      MIN_CREDITS="${WATCH_MIN_CREDITS:-3000}" \
+      timeout "${WATCH_TIMEOUT_SEC:-3600}" python "/workspace/code/${FETCH_SCRIPT:-fetch.py}"
+    wec=$?
+    echo "watchlist=$wec ($([ $wec -eq 124 ] && echo 'WATCHDOG TIMEOUT' || echo 'exited')) at $(date -u +%FT%TZ)"
+  fi
+
+  if [ -n "$wec" ] && [ -n "${WATCHLIST_ONLY:-}" ]; then
+    echo "WATCHLIST_ONLY set — main ${FETCH_SCRIPT:-fetch.py} pass skipped"
+    ec=$wec
+  else
+    # 8h watchdog: a cold full-universe pass (EODHD prices+divs+splits+fundamentals+estimates+news, or
+    # Sharadar SEP+SF1+ACTIONS, for ~500 tickers) runs several hours; a bulk backfill can run longer.
+    # This bounds a hung fetch without cutting a legitimate long backfill short.
+    # VALIDATE_ARGS is the one job that takes CLI flags (validate.py --repair); every fetcher ignores
+    # extra argv, so passing it unconditionally is harmless. Unquoted on purpose: it is a flag list.
+    timeout 28800 python "/workspace/code/${FETCH_SCRIPT:-fetch.py}" ${VALIDATE_ARGS:-}
+    ec=$?
+    # a failed watchlist must not hide behind a clean main run: fetch=<rc> is what gets read
+    if [ "$ec" -eq 0 ] && [ -n "$wec" ] && [ "$wec" -ne 0 ]; then ec=$wec; fi
+  fi
   echo "$ec" > "$MARKER" 2>/dev/null || true
 fi
 echo "fetch=$ec ($([ $ec -eq 124 ] && echo 'WATCHDOG TIMEOUT' || echo 'exited')) at $(date -u +%FT%TZ) \

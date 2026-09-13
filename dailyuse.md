@@ -104,7 +104,9 @@ One-time: `cp data_acquisition/runpod/.env.example data_acquisition/runpod/.env`
 (RunPod account/S3 keys + network-volume id, plus the token for whichever vendor you launch —
 `EODHD_API_TOKEN`, `SHARADAR_API_KEY`, and/or `TIINGO_API_TOKEN`). Edit the universe in
 `data_acquisition/config/tickers.json` (EODHD), `config/sharadar.json` (Sharadar), or
-`config/tiingo.json` (Tiingo).
+`config/tiingo.json` (Tiingo). Names to acquire WITHOUT feeding M1/the models go in
+`config/watchlist_{eodhd,sharadar,tiingo}.json` instead — see
+[data_acquisition/README.md](data_acquisition/README.md#data-only-watchlist-configwatchlist_vendorjson).
 
 > **Where to get `SHARADAR_API_KEY`:** individual users subscribe to the **Core US Equities Bundle**
 > (Non-Professional tier) at <https://sharadar.com/subscribe> and copy the key from their sharadar.com

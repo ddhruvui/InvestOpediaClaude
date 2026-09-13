@@ -1,0 +1,13 @@
+{
+  "_comment": "DATA-ONLY WATCHLIST (added 2026-09-13) — see watchlist_eodhd.json for why these names are held out of M1. Fetched by fetch_tiingo.py in the tiingo pod, before the main pass, into data_tiingo/watchlist/; build_m1 and validate read data_tiingo/*.json only. DAILY, unlike the main config's 30-day cadence: skip_fresh_days 0.5 refetches each nightly run but skips a same-day relaunch (a whole 1 would skip a run that starts a few minutes earlier than yesterday's). 13 symbols is ~24 requests split over the three free tokens, far inside 50/hr each; the 72s pacing is kept so the main pass that follows in the same hour cannot trip a 429. Adds ~4 symbols to each account's 500-unique-symbols/month cap.",
+  "from": "1990-01-01",
+  "market_from": "1990-01-01",
+  "incremental": true,
+  "datasets": ["prices", "metadata"],
+  "symbol_list": false,
+  "min_request_interval_sec": 72,
+  "max_requests_per_run": 100,
+  "skip_fresh_days": 0.5,
+  "market": ["SPY", "QQQ"],
+  "stocks": ["AAL", "AAOI", "ARM", "ASML", "ASTS", "BE", "BRK-B", "MSTR", "RKLB", "SNOW", "SOFI", "TSM"]
+}

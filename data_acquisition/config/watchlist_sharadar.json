@@ -1,0 +1,14 @@
+{
+  "_comment": "DATA-ONLY WATCHLIST (added 2026-09-13) — see watchlist_eodhd.json for why these names are held out of M1. Fetched every night by fetch_nasdaq.py in the nasdaq pod, before the main pass, into data_nasdaq/watchlist/{SEP,SF1,ACTIONS,SFP}/<T>.json; build_m1 and validate read data_nasdaq/{SEP,SF1,ACTIONS}/*.json only. No whole tables here: TICKERS/SP500 and the survivorship-free _ALL pulls already cover every name in the main pass. Windows start 1990, below the bundle's ~1998 floor, so every name's full available history lands. A universe this small fits one ticker list, so warm runs filter server-side instead of taking the unfiltered bulk pull.",
+  "from": "1990-01-01",
+  "sf1_from": "1990-01-01",
+  "dimension": "ARQ",
+  "incremental": true,
+  "ticker_replace": ["-", "."],
+  "tables": ["SEP", "SF1", "ACTIONS", "SFP"],
+  "whole_tables": [],
+  "whole_market_tables": [],
+  "stocks": ["AAL", "AAOI", "ARM", "ASML", "ASTS", "BE", "BRK-B", "MSTR", "RKLB", "SNOW", "SOFI", "TSM"],
+  "_funds_comment": "SPY/QQQ are ETFs, which Sharadar files in the `funds` table (SFP), NOT SEP: in `stocks` they return 0 SEP rows, and an empty file pins the whole table to the cold path every night. SFP is served to this Core US Equities key (verified live 2026-09-13; QQQ reaches its 1999-03-10 listing).",
+  "funds": ["QQQ", "SPY"]
+}

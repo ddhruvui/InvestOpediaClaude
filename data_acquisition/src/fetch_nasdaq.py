@@ -18,6 +18,7 @@ paging. This fetcher targets the sharadar.com retail API.
     D-04 corporate actions        ACTIONS          actions       -> DATA_DIR/ACTIONS/<TICKER>.json
     D-13 entity master            TICKERS          tickers       -> DATA_DIR/TICKERS/SHARADAR.json
     D-15 index constituents       SP500            sp500         -> DATA_DIR/SP500/SHARADAR.json
+    ETF prices (watchlist only)   SFP              funds         -> DATA_DIR/SFP/<TICKER>.json
 
 API CONTRACT (verified live against api.sharadar.com):
   - Request : GET https://api.sharadar.com/v1.0/data/<endpoint>?api_key=..&format=json&limit=..&<filters>
@@ -50,6 +51,8 @@ PER-TICKER SERIES (config "tables", applied to each "stocks" entry):
              `datekey`); M2-03 adds the +1-session visibility lag off it downstream. calendardate =
              normalized period-end; reportperiod = as-reported period-end. COGS is the `cor` field.
     ACTIONS  D-04  date,action,ticker,name,value,contraticker,contraname (no lastupdated column).
+    SFP      fund prices (ETFs/CEFs), SEP's column set. Applied to the config's "funds" list, NOT
+             "stocks": Sharadar files an ETF under `funds` only, so SPY asked of SEP returns 0 rows.
 
 WHOLE-TABLE SNAPSHOTS (config "whole_tables", no ticker filter — survivorship-bias-free):
     TICKERS  D-13  permaticker (M1 entity key), ticker,name,exchange,isdelisted,category,cusips,
@@ -98,7 +101,7 @@ DATA_DIR = os.environ.get("DATA_DIR", "/workspace/data_nasdaq")
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/workspace/code/sharadar.json")
 API = "https://api.sharadar.com/v1.0/data"
 # logical table (spec/config) -> api.sharadar.com endpoint name
-ENDPOINT = {"SEP": "stocks", "SF1": "fundamentals", "ACTIONS": "actions",
+ENDPOINT = {"SEP": "stocks", "SF1": "fundamentals", "ACTIONS": "actions", "SFP": "funds",
             "TICKERS": "tickers", "SP500": "sp500"}
 # Column whose value-counts are tracked run-to-run, so a critical minority (e.g. ACTIONS
 # `delisted`) cannot collapse unnoticed behind a healthy total-row count.
@@ -140,6 +143,7 @@ PER_TICKER = {
     "SEP":     {"date_filter": "date",         "from_key": "from",     "incr_col": "lastupdated"},
     "SF1":     {"date_filter": "calendardate", "from_key": "sf1_from", "incr_col": "lastupdated"},
     "ACTIONS": {"date_filter": "date",         "from_key": "from",     "incr_col": "date"},
+    "SFP":     {"date_filter": "date",         "from_key": "from",     "incr_col": "lastupdated"},
 }
 # Whole-table snapshots -> the filter needed to get the FULL table.
 # SP500 gotcha: an UNFILTERED /sp500 call silently returns only a trailing ~1 year (2,559 rows,
@@ -699,7 +703,9 @@ def main():
         spec = PER_TICKER[table]
         endpoint = ENDPOINT[table]
         incr_col = spec["incr_col"]
-        syms = [_sharadar_ticker(t, cfg, table) for t in stocks]
+        # ETFs exist only in the `funds` table (SEP answers 0 rows for SPY), so SFP has its own list
+        universe = cfg.get("funds", []) if table == "SFP" else stocks
+        syms = [_sharadar_ticker(t, cfg, table) for t in universe]
         if not syms:
             return
         paths = {s: os.path.join(DATA_DIR, table, f"{s}.json") for s in syms}
@@ -758,6 +764,12 @@ def main():
         try:
             if warm:
                 base = dict(sf1_extra, **{f"{incr_col}.gte": watermark})
+                batches = list(_ticker_batches(syms))
+                if len(batches) == 1:
+                    # A universe that fits one ticker list (the watchlist) filters server-side, so it
+                    # neither drags down the whole market's updates nor rides the unfiltered page
+                    # order. The 506-name main universe cannot, and keeps the bulk pull.
+                    base["ticker"] = ",".join(batches[0])
                 rows, _ = _fetch(endpoint, base, label=f"bulk {incr_col}>={watermark}")
                 uni = set(syms)
                 by = _group_by_ticker([r for r in rows if r.get("ticker") in uni])
@@ -948,6 +960,7 @@ def main():
         "tables": tables,
         "whole_tables": whole_tables,
         "n_stocks": len(stocks),
+        "n_funds": len(cfg.get("funds") or []),
         "ok": all_ok,
         "results": results,
     }

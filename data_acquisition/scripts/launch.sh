@@ -28,6 +28,11 @@
 # self-terminates. The vendors share the volume without colliding (distinct data namespaces).
 # Fire-and-forget: prints the pod id(s) and exits. download/clear/storage_usage/killpod are shared.
 #
+# WATCHLIST: eodhd, nasdaq and tiingo also upload config/watchlist_<vendor>.json, and their pod runs
+# the same fetcher on it first, into <data tree>/watchlist/ — data-only names that M1 and the
+# models never read (see src/bootstrap.sh). WATCHLIST_ONLY=1 skips the main pass:
+#   WATCHLIST_ONLY=1 scripts/launch.sh eodhd    # backfill/refresh just the watchlist
+#
 # DRY_RUN=1 prints what would be uploaded/launched without touching S3 or creating pods.
 . "$(dirname "$0")/_common.sh"
 
@@ -89,7 +94,7 @@ RUNNING_PODS=$(curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
   -H "Authorization: Bearer ${RUNPOD_API_KEY}" 2>/dev/null) || RUNNING_PODS=""
 
 launch_vendor() {
-  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL DATA_SUBDIR VCPU
+  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL DATA_SUBDIR VCPU WATCH_FILE=""
   # RunPod gives 2 GB per vCPU. Default 2 vCPU / 4 GB is fine for the streaming fetchers; nasdaq
   # merges every ticker's history in memory during a cold pull and OOM-killed (exit 137) at 4 GB
   # once the window went to 26 years, so it gets 4 vCPU / 8 GB. m1 loads Parquet frames and gets
@@ -123,12 +128,15 @@ launch_vendor() {
   case "$VENDOR" in
     eodhd)
       FETCH_SCRIPT="fetch.py";        CONFIG_FILE="tickers.json";  DATA_SUBDIR="data"
+      WATCH_FILE="watchlist_eodhd.json"
       TOKEN_VAR="EODHD_API_TOKEN";    TOKEN_VAL="${EODHD_API_TOKEN:-}" ;;
     nasdaq)
       FETCH_SCRIPT="fetch_nasdaq.py"; CONFIG_FILE="sharadar.json"; DATA_SUBDIR="data_nasdaq"
+      WATCH_FILE="watchlist_sharadar.json"
       TOKEN_VAR="SHARADAR_API_KEY";   TOKEN_VAL="${SHARADAR_API_KEY:-${NASDAQ_DATA_LINK_API_KEY:-}}" ;;
     tiingo)
       FETCH_SCRIPT="fetch_tiingo.py"; CONFIG_FILE="tiingo.json";   DATA_SUBDIR="data_tiingo"
+      WATCH_FILE="watchlist_tiingo.json"
       TOKEN_VAR="TIINGO_API_TOKEN";   TOKEN_VAL="${TIINGO_API_TOKEN:-}" ;;
     borrow)
       # No vendor key: the IBKR short-stock file is anonymous FTP. TOKEN_VAR is passed through as a
@@ -170,9 +178,13 @@ launch_vendor() {
     return 0
   fi
 
+  if [ -n "$WATCH_FILE" ] && [ ! -f "$ROOT/config/$WATCH_FILE" ]; then
+    WATCH_FILE=""      # no watchlist config for this vendor -> the pod runs its main pass only
+  fi
+
   if [ -n "$DRY_RUN" ]; then
-    echo "DRY_RUN: would upload src/$FETCH_SCRIPT + src/bootstrap.sh + config/$CONFIG_FILE to $BUCKET/code/"
-    echo "DRY_RUN: would create CPU pod investopediaclaude-${VENDOR} in ${DC} (FETCH_SCRIPT=$FETCH_SCRIPT, token=$TOKEN_VAR)"
+    echo "DRY_RUN: would upload src/$FETCH_SCRIPT + src/bootstrap.sh + config/$CONFIG_FILE${WATCH_FILE:+ + config/$WATCH_FILE} to $BUCKET/code/"
+    echo "DRY_RUN: would create CPU pod investopediaclaude-${VENDOR} in ${DC} (FETCH_SCRIPT=$FETCH_SCRIPT, token=$TOKEN_VAR${WATCH_FILE:+, WATCH_CONFIG=$WATCH_FILE}${WATCHLIST_ONLY:+, WATCHLIST_ONLY=1})"
     return 0
   fi
 
@@ -184,6 +196,9 @@ launch_vendor() {
   fi
   aws s3 cp $S3FLAGS "$ROOT/src/bootstrap.sh"       "$BUCKET/code/bootstrap.sh"
   aws s3 cp $S3FLAGS "$ROOT/config/$CONFIG_FILE"    "$BUCKET/code/$CONFIG_FILE"
+  if [ -n "$WATCH_FILE" ]; then
+    aws s3 cp $S3FLAGS "$ROOT/config/$WATCH_FILE"   "$BUCKET/code/$WATCH_FILE"
+  fi
 
   # post.py's manifest gate: "fresh" = ended_at newer than this launch (see post.py docstring)
   local PAYLOAD RESP CODE BODY POD_ID LAUNCHED_AT
@@ -213,6 +228,8 @@ launch_vendor() {
     "TIINGO_API_TOKEN3": "${TIINGO_API_TOKEN3:-}",
     "FETCH_SCRIPT": "${FETCH_SCRIPT}",
     "CONFIG_PATH": "/workspace/code/${CONFIG_FILE}",
+    "WATCH_CONFIG": "${WATCH_FILE}",
+    "WATCHLIST_ONLY": "${WATCHLIST_ONLY:-}",
     "DATA_DIR": "/workspace/${DATA_SUBDIR}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
     "STORE_LOGS": "${STORE_LOGS}",
