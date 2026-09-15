@@ -49,7 +49,7 @@ launch fails, the others still launch and the script exits nonzero naming the fa
 
 Names acquired every night but **not** fed to M1 or the models (added 2026-09-13: AAL, AAOI, ARM,
 ASML, ASTS, BE, BRK-B, MSTR, RKLB, SNOW, SOFI, TSM, plus the ETFs SPY and QQQ). BRK-B is also in the
-main S&P lists — the models keep that 2000+ copy; the watchlist one carries its history from 1996. The eodhd, nasdaq and tiingo
+main S&P lists — the models keep that 2000+ copy; the watchlist one carries its history from 1996. The eodhd, nasdaq, tiingo and borrow
 pods run their fetcher twice — first on the watchlist config into `<tree>/watchlist/`, then the main
 pass (`src/bootstrap.sh`) — so `launch.sh all` / `scripts/daily.sh` pull them with no extra step.
 
@@ -66,12 +66,15 @@ pass (`src/bootstrap.sh`) — so `launch.sh all` / `scripts/daily.sh` pull them 
   `fetch_nasdaq.py` pulls from the SFP (`funds`) endpoint — SEP has no rows for an ETF.
 - **Cadence:** EODHD and Sharadar nightly; Tiingo nightly too (`skip_fresh_days` 0.5, ~24 paced
   requests, ~12 min), unlike the main 30-day Tiingo cadence.
-- `WATCHLIST_ONLY=1 scripts/launch.sh <eodhd|nasdaq|tiingo>` runs just the watchlist pass. The pod log
+- **Borrow** is iBorrowDesk history only (`countries: []`): the IBKR usa.txt snapshot the main pass
+  stores already lists every shortable name. Same 20 s pacing / 3-day freshness as the main pass.
+- `WATCHLIST_ONLY=1 scripts/launch.sh <eodhd|nasdaq|tiingo|borrow>` runs just the watchlist pass. The pod log
   prints `watchlist=<rc>` after it, and a watchlist failure also makes the final `fetch=<rc>` nonzero.
 
 Layout: `data/watchlist/` mirrors `data/` (`<T>.json`, dividends/, splits/, fundamentals/, estimates/,
 news/, market/, earnings/); `data_nasdaq/watchlist/{SEP,SF1,ACTIONS,SFP}/<T>.json`;
-`data_tiingo/watchlist/` (`<T>.json`, metadata/, market/). Each keeps its own `_run.json`.
+`data_tiingo/watchlist/` (`<T>.json`, metadata/, market/); `data_borrow/watchlist/history/<T>.json`.
+Each keeps its own `_run.json`.
 
 ## EODHD coverage vs spec D-items
 

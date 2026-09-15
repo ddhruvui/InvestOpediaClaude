@@ -1,0 +1,8 @@
+{
+  "_comment": "DATA-ONLY WATCHLIST (added 2026-09-13) — see watchlist_eodhd.json for why these names are held out of M1. Runs inside the borrow pod BEFORE the main pass, into data_borrow/watchlist/history/<T>.json; build_m1 reads data_borrow/history/ only. iBorrowDesk history ONLY: `countries` is empty because the IBKR usa.txt snapshot already lists every shortable US name (all of these included) and the main pass stores it whole — a second copy would be pure duplication. Same iBorrowDesk rules as the main pass (20 s pacing, 3-day freshness, per-IP ban): 14 names add ~5 min and 14 requests on a refresh night. BRK-B resolves to iBorrowDesk's BRK.B via the fetcher's dual-class alias.",
+  "countries": [],
+  "iborrowdesk": {
+    "enabled": true,
+    "stocks": ["AAL", "AAOI", "ARM", "ASML", "ASTS", "BE", "BRK-B", "MSTR", "QQQ", "RKLB", "SNOW", "SOFI", "SPY", "TSM"]
+  }
+}

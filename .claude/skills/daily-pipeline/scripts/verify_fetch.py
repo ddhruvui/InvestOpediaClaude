@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 TREES = ["data", "data_nasdaq", "data_tiingo", "data_borrow", "data_calendar", "data_finbert",
          # data-only watchlist passes (config/watchlist_*.json), run inside the vendor pods
-         "data/watchlist", "data_nasdaq/watchlist", "data_tiingo/watchlist"]
+         "data/watchlist", "data_nasdaq/watchlist", "data_tiingo/watchlist", "data_borrow/watchlist"]
 FLOOR = sys.argv[1] if len(sys.argv) > 1 else None
 TMP = os.environ.get("TMPDIR", "/tmp")
 

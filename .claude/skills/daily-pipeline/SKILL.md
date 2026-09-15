@@ -103,8 +103,9 @@ Then confirm the session that just closed actually landed:
 
 Tiingo `DEFER` entries are budget deferrals, not failures — they resume next run.
 
-The three `…/watchlist` trees are the data-only watchlist (`config/watchlist_*.json`), fetched
-inside the eodhd/nasdaq/tiingo pods BEFORE their main pass — each of those pod logs shows a
+The four `…/watchlist` trees are the data-only watchlist (`config/watchlist_*.json`), fetched
+inside the eodhd/nasdaq/tiingo/borrow pods BEFORE their main pass (borrow's is iBorrowDesk
+history only — the IBKR snapshot already covers every name) — each of those pod logs shows a
 `watchlist=<rc>` line, and a watchlist failure also turns the final `fetch=` nonzero. They must be
 FRESH with `fail=0` like the rest, but nothing downstream reads them, so a watchlist failure is
 never a reason to hold post/market/predict. They add ~12 min to the tiingo pod every night (13

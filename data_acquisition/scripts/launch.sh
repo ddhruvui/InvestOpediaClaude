@@ -142,6 +142,7 @@ launch_vendor() {
       # No vendor key: the IBKR short-stock file is anonymous FTP. TOKEN_VAR is passed through as a
       # harmless empty env var so the payload shape stays identical across vendors.
       FETCH_SCRIPT="fetch_borrow.py"; CONFIG_FILE="borrow.json";   DATA_SUBDIR="data_borrow"
+      WATCH_FILE="watchlist_borrow.json"
       TOKEN_VAR="IBKR_FTP_USER";      TOKEN_VAL="${IBKR_FTP_USER:-shortstock}" ;;
     calendar)
       # The only fetcher with a pip dep: exchange_calendars (D-11 needs FUTURE sessions).

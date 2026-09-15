@@ -446,7 +446,9 @@ def main():
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH) as f:
             cfg = json.load(f)
-    countries = cfg.get("countries") or ["usa"]
+    # An explicit [] means NO IBKR snapshot — the watchlist config pulls iBorrowDesk history only,
+    # because the main pass already stores the whole usa.txt. Only a missing key defaults to usa.
+    countries = cfg["countries"] if isinstance(cfg.get("countries"), list) else ["usa"]
     started = datetime.now(timezone.utc)
     results = []
 
@@ -498,7 +500,9 @@ def main():
     # (today's file exists for minutes), the history is a rolling window that tolerates a retry.
     collect_history(cfg, results)
 
-    all_ok = bool(results) and all(r["ok"] for r in results)
+    # An empty results list is only a failure when a snapshot was requested: with `countries: []`
+    # (the watchlist config) a night where every history name is still fresh legitimately does nothing.
+    all_ok = (bool(results) or not countries) and all(r["ok"] for r in results)
     manifest = {
         "vendor": "IBKR public short-stock file (anonymous FTP) + iBorrowDesk history",
         "spec": "Data Acquisition Specification — FINAL v1.2",
