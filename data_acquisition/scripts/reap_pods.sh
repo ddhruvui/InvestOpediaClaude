@@ -18,7 +18,7 @@
 # ones still working, so it is unsafe mid-run. This reaper deletes a pod only after it
 # has read that pod's OWN log off the volume and seen the job finish:
 #
-#   fetchers (eodhd nasdaq tiingo borrow calendar finbert)
+#   fetchers (eodhd nasdaq tiingo borrow calendar finbert intraday)
 #       reaped on `fetch=<rc> (…) — terminating pod <id>`, whatever <rc> is: the work is
 #       over either way, the log is already on the volume, and these jobs are resumable.
 #       A non-zero rc is reported loudly.

@@ -64,6 +64,29 @@ A pod exiting is not evidence a stage succeeded — a stage can be OOM-killed (`
 its pod still self-terminates normally and leaves yesterday's output in place. Ask for exit
 codes, not "it finished".
 
+## Minute bars (`intraday-pull` skill)
+
+The 1-minute intraday store (`data/tickdata/` on the volume; every stock we hold — the S&P list, the
+data-only watchlist, the research names — plus SPY/QQQ, ~519 symbols, extended hours, from 2004) has
+its own skill, `.claude/skills/intraday-pull/`. It is append-only (existing bars are never
+rewritten) and the pod grows the volume 1 GB at a time when free space drops under 5 GB. The nightly
+`launch all` tops it up; use the prompt below for a first backfill, after a universe change, or
+whenever the intraday pod reported `fetch=75` (space) or `fetch=1` (failures).
+
+**The one to use:**
+
+> Run the intraday pull: launch the minute-bar fetcher on RunPod, monitor it, grow the volume by
+> 1 GB if it runs out of space, verify the downloaded data, and make sure the pod is gone.
+
+**Just check on it:**
+
+> How far is the minute-bar backfill? Verify the intraday store and tell me what is missing.
+
+**Done means:** `fetch=0`, the pod gone, the runner's append-only check with 0 lost rows and 0 shrunk
+files, and the verifier printing `VERIFIED: minute store consistent — 519 symbols …`. While a new
+batch of names is still backfilling (a cold symbol is ~350 credits, so ~400 new names take two
+nights of credits), exit 5 `NOT FINISHED (consistent so far)` is the expected answer.
+
 ## Not included
 
 `stage1`, `stage2`, `stage3` are the research/backtest stages and are deliberately outside the

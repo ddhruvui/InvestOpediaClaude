@@ -7,6 +7,10 @@
 #   scripts/launch.sh borrow     # D-10 IBKR borrow fees -> src/fetch_borrow.py + config/borrow.json
 #   scripts/launch.sh calendar   # D-11 NYSE sessions (source of truth) -> src/fetch_calendar.py
 #   scripts/launch.sh finbert    # D-16 FinBERT weights at a pinned sha -> src/fetch_finbert.py
+#   scripts/launch.sh intraday   # 1-minute bars incl. extended hours for every stock we hold
+#                                # -> src/fetch_intraday.py + config/intraday.json (+ tickers.json,
+#                                # watchlist_eodhd.json for the universe) -> data/tickdata/ (Parquet,
+#                                # append-only; the pod grows the volume 1 GB at a time when low)
 #   scripts/launch.sh post       # WAITS for today's vendor manifests, then validate -> build_m1.
 #                                # Fire it alongside `all`; it self-sequences. This is the stage
 #                                # that keeps the M1 tables in step with the data.
@@ -37,18 +41,19 @@
 . "$(dirname "$0")/_common.sh"
 
 case "${1:-eodhd}" in
-  all)            VENDORS="eodhd nasdaq tiingo borrow calendar finbert" ;;
+  all)            VENDORS="eodhd nasdaq tiingo borrow calendar finbert intraday" ;;
   eodhd)          VENDORS="eodhd" ;;
   nasdaq|sharadar) VENDORS="nasdaq" ;;
   tiingo)         VENDORS="tiingo" ;;
   borrow|ibkr)    VENDORS="borrow" ;;
   calendar)       VENDORS="calendar" ;;
   finbert)        VENDORS="finbert" ;;
+  intraday|minute|tickdata) VENDORS="intraday" ;;
   m1|landing)     VENDORS="m1" ;;
   post)           VENDORS="post" ;;
   validate|qa)    VENDORS="validate" ;;
   *)
-    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, borrow, calendar, finbert, validate, m1, post, all)" >&2; exit 2 ;;
+    echo "unknown vendor '$1' (valid: eodhd, nasdaq, tiingo, borrow, calendar, finbert, intraday, validate, m1, post, all)" >&2; exit 2 ;;
 esac
 : "${RUNPOD_API_KEY:?account rpa_ key, set in runpod/.env}"
 
@@ -94,7 +99,8 @@ RUNNING_PODS=$(curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
   -H "Authorization: Bearer ${RUNPOD_API_KEY}" 2>/dev/null) || RUNNING_PODS=""
 
 launch_vendor() {
-  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL DATA_SUBDIR VCPU WATCH_FILE=""
+  local VENDOR="$1" FETCH_SCRIPT CONFIG_FILE TOKEN_VAR TOKEN_VAL DATA_SUBDIR VCPU WATCH_FILE="" EXTRA_PIP="" EXTRA_ENV=""
+  local EXTRA_CONFIGS="" JOB_ENV=""
   # RunPod gives 2 GB per vCPU. Default 2 vCPU / 4 GB is fine for the streaming fetchers; nasdaq
   # merges every ticker's history in memory during a cold pull and OOM-killed (exit 137) at 4 GB
   # once the window went to 26 years, so it gets 4 vCPU / 8 GB. m1 loads Parquet frames and gets
@@ -155,6 +161,21 @@ launch_vendor() {
       # One-time weights pull, but idempotent (size+sha checked), so it is safe in the daily set.
       FETCH_SCRIPT="fetch_finbert.py"; CONFIG_FILE="finbert.json"; DATA_SUBDIR="data_finbert"
       TOKEN_VAR="HF_ENDPOINT";        TOKEN_VAL="${HF_ENDPOINT:-https://huggingface.co}" ;;
+    intraday)
+      # 1-minute bars with extended hours for every stock we hold, Parquet under data/tickdata. The
+      # universe is config/intraday.json's own names plus the stocks of tickers.json and
+      # watchlist_eodhd.json, so those ride along (EXTRA_CONFIGS) and an index change flows in with
+      # no edit. Needs pyarrow: the payload carries one TOKEN_VAR and here that must be the EODHD
+      # token, so pip goes through EXTRA_PIP -> a second "PIP_PACKAGES" env line. Append-only:
+      # existing bars are never rewritten. A warm night is ~2.6k credits and minutes; a cold symbol
+      # ~70 requests, so a new batch backfills over a night or two (budget-capped, resumes). The pod
+      # grows the network volume 1 GB at a time when free space drops under min_free_gb (it has the
+      # key and NETWORK_VOLUME_ID); exit 75 only when it cannot. INTRADAY_RESERVE_CREDITS /
+      # INTRADAY_MAX_RUN_MINUTES / INTRADAY_WORKERS override the config for one launch.
+      FETCH_SCRIPT="fetch_intraday.py"; CONFIG_FILE="intraday.json"; DATA_SUBDIR="data/tickdata"
+      EXTRA_CONFIGS="tickers.json watchlist_eodhd.json"
+      JOB_ENV="\"RESERVE_CREDITS\": \"${INTRADAY_RESERVE_CREDITS:-}\", \"MAX_RUN_MINUTES\": \"${INTRADAY_MAX_RUN_MINUTES:-}\", \"WORKERS\": \"${INTRADAY_WORKERS:-}\","
+      TOKEN_VAR="EODHD_API_TOKEN";    TOKEN_VAL="${EODHD_API_TOKEN:-}"; EXTRA_PIP="${INTRADAY_PIP:-pyarrow tzdata}" ;;
     post)
       # Waits for the fetchers, then runs validate + build_m1 in one pod. Same pip deps as m1,
       # and the same 8 GB — it ends up doing the M1 build itself.
@@ -184,8 +205,8 @@ launch_vendor() {
   fi
 
   if [ -n "$DRY_RUN" ]; then
-    echo "DRY_RUN: would upload src/$FETCH_SCRIPT + src/bootstrap.sh + config/$CONFIG_FILE${WATCH_FILE:+ + config/$WATCH_FILE} to $BUCKET/code/"
-    echo "DRY_RUN: would create CPU pod investopediaclaude-${VENDOR} in ${DC} (FETCH_SCRIPT=$FETCH_SCRIPT, token=$TOKEN_VAR${WATCH_FILE:+, WATCH_CONFIG=$WATCH_FILE}${WATCHLIST_ONLY:+, WATCHLIST_ONLY=1})"
+    echo "DRY_RUN: would upload src/$FETCH_SCRIPT + src/bootstrap.sh + config/$CONFIG_FILE${WATCH_FILE:+ + config/$WATCH_FILE}${EXTRA_CONFIGS:+ + $EXTRA_CONFIGS} to $BUCKET/code/"
+    echo "DRY_RUN: would create CPU pod investopediaclaude-${VENDOR} in ${DC} (FETCH_SCRIPT=$FETCH_SCRIPT, token=$TOKEN_VAR${EXTRA_PIP:+, PIP_PACKAGES=$EXTRA_PIP}${WATCH_FILE:+, WATCH_CONFIG=$WATCH_FILE}${WATCHLIST_ONLY:+, WATCHLIST_ONLY=1}, DATA_DIR=/workspace/$DATA_SUBDIR)"
     return 0
   fi
 
@@ -200,10 +221,20 @@ launch_vendor() {
   if [ -n "$WATCH_FILE" ]; then
     aws s3 cp $S3FLAGS "$ROOT/config/$WATCH_FILE"   "$BUCKET/code/$WATCH_FILE"
   fi
+  for EXTRA_CONFIG in $EXTRA_CONFIGS; do
+    aws s3 cp $S3FLAGS "$ROOT/config/$EXTRA_CONFIG" "$BUCKET/code/$EXTRA_CONFIG"
+  done
 
   # post.py's manifest gate: "fresh" = ended_at newer than this launch (see post.py docstring)
   local PAYLOAD RESP CODE BODY POD_ID LAUNCHED_AT
   LAUNCHED_AT=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+  # EXTRA_ENV: an optional second env line (only intraday uses it), so PIP_PACKAGES can ride
+  # alongside a vendor token without duplicating a JSON key for the vendors whose TOKEN_VAR IS
+  # PIP_PACKAGES. An empty line inside the object is valid JSON.
+  if [ -n "$EXTRA_PIP" ] && [ "$TOKEN_VAR" != "PIP_PACKAGES" ]; then
+    EXTRA_ENV="\"PIP_PACKAGES\": \"${EXTRA_PIP}\","
+  fi
+  EXTRA_ENV="${EXTRA_ENV} ${JOB_ENV}"
   # COMPUTE is the only part that differs between a CPU pod and the GPU fallback.
   build_payload() {   # $1: "" for CPU, else a gpuTypeId
     local COMPUTE
@@ -225,6 +256,7 @@ launch_vendor() {
   "dockerStartCmd": ["bash", "/workspace/code/bootstrap.sh"],
   "env": {
     "${TOKEN_VAR}": "${TOKEN_VAL}",
+    ${EXTRA_ENV}
     "TIINGO_API_TOKEN2": "${TIINGO_API_TOKEN2:-}",
     "TIINGO_API_TOKEN3": "${TIINGO_API_TOKEN3:-}",
     "FETCH_SCRIPT": "${FETCH_SCRIPT}",
@@ -233,6 +265,7 @@ launch_vendor() {
     "WATCHLIST_ONLY": "${WATCHLIST_ONLY:-}",
     "DATA_DIR": "/workspace/${DATA_SUBDIR}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
+    "NETWORK_VOLUME_ID": "${RUNPOD_VOLUME_ID}",
     "STORE_LOGS": "${STORE_LOGS}",
     "POST_LAUNCHED_AT": "${LAUNCHED_AT}"
   }

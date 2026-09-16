@@ -519,3 +519,48 @@ this is not a fetcher, so it runs locally or anywhere with the volume mirrored).
 > **`quarantined=True` does not mean "unusable"** once rule 2 has run. It means the vendors
 > disagreed on that span and Sharadar's raw print was used. DD carries the flag *and* the correct
 > price. Only a row still sourced from EODHD inside a tainted span has its close dropped.
+
+# Intraday — 1-minute bars (`scripts/launch.sh intraday`)
+
+`src/fetch_intraday.py` + `config/intraday.json` → `data/tickdata/` (Parquet; pyarrow + tzdata installed on
+the pod via PIP_PACKAGES). ONE-minute bars only: the sole EODHD interval with history before October
+2020 and the only one documented to include pre-market (04:00 ET) and after-hours (to 20:00 ET);
+5-minute and coarser are resampled downstream, never pulled.
+
+**Universe — every stock we hold**, resolved at run time: `intraday.json` `stocks` (research names,
+pulled first) ∪ `stocks`/`market` of every file in `universe_configs` (`tickers.json`,
+`watchlist_eodhd.json`, uploaded next to it by launch.sh) ∪ `market` (SPY, QQQ): 519 symbols on
+2026-09-15. New names backfill from 2004-01-02 or their daily history's first date.
+
+| path | meaning |
+|---|---|
+| `data/tickdata/1m/<SYMBOL>/<YYYY>.parquet` | ts (Unix UTC s), gmtoffset (Eastern offset computed by the fetcher, -14400/-18000; the vendor sends UTC with gmtoffset 0), open/high/low/close, volume. Up to 960 bars per session, 04:00–19:59 ET; one file per ET year |
+| `data/tickdata/_manifest.json` | producer marker + per-symbol first_ts / last_ts / rows / complete / no_vendor_data_until — the resume point |
+| `data/tickdata/_audit/<SYMBOL>.json` | per-file audit cache (keyed by size+mtime): sessions present, structural counts, last-session profile; `tried_days` = historical sessions already re-asked once |
+| `data/tickdata/_run.json` | per-run results; `stop_reason` (budget / time / space), space mode, GB grown |
+| `data/tickdata/_verify.json` | full-history verification: `summary.status` verified / incomplete / failed, coverage vs the XNYS calendar, structure, extended hours, 09:30 bar vs daily open |
+
+**Append-only.** Merges keep the existing bar for any timestamp already stored; only missing
+timestamps are added. A year file that gains nothing is never rewritten; one that gains bars is
+rebuilt atomically (tmp + rename) with its existing rows unchanged.
+
+**What a run adds.** Tail: from `last_ts − resettle_days` (4) to now — the overlap only fills minutes
+the vendor published late. Cold symbols probe the last 10 days first; nothing there → "no vendor
+data" (BF-B; rechecked every `no_data_retry_days`) instead of 70 empty windows. Gaps: XNYS sessions
+missing inside a caught-up symbol's history are re-asked once, grouped into 120-day windows; the ones
+the vendor still lacks are recorded and never re-billed.
+
+**Budget and time.** 5 credits per 120-day request; `workers` (8) symbols in parallel. The run stops at
+`dailyRateLimit + extraLimit − reserve_credits` (25k, re-read every 500 requests, so the nightly eodhd
+pod is never starved) or after `max_run_minutes` (430, inside bootstrap's 8 h watchdog), exits 0 and
+resumes next run. `INTRADAY_RESERVE_CREDITS`, `INTRADAY_MAX_RUN_MINUTES`, `INTRADAY_WORKERS` override
+one launch.
+
+**Space.** The pod keeps `min_free_gb` (5 — room for the m1x rebuild) free by growing the network
+volume `grow_step_gb` (1) at a time through the RunPod API (it gets `NETWORK_VOLUME_ID` and the key),
+up to `max_grow_gb_per_run` (30). Free space is statvfs when the mount reports the volume's own size,
+else allocated (API) minus a walk of /workspace. Exit **75** only when it cannot grow (then
+`scripts/grow_volume.sh 1` from the host and relaunch); `scripts/volume_free.sh` reports free space.
+Folder rule: if `data/tickdata` exists without the fetcher's marker, `data/intraday_1m` is used
+instead. The `intraday-pull` skill (`.claude/skills/intraday-pull/`) wraps launch → wait → pod gone →
+grow/relaunch → append-only check → verify. Synthetic tests: `pytest tests/test_fetch_intraday.py`.
