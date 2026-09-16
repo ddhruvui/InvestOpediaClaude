@@ -24,7 +24,7 @@ EXEMPT = {"investopediaclaude-post"}
 
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 env = {}
-for ln in open(os.path.join(REPO, "data_acquisition/runpod/.env")):
+for ln in open(os.path.join(REPO, "runpod/.env")):
     ln = ln.strip()
     if ln and not ln.startswith("#") and "=" in ln:
         k, v = ln.split("=", 1)

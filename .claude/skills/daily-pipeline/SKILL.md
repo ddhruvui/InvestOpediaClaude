@@ -1,68 +1,85 @@
 ---
 name: daily-pipeline
-description: Run and monitor the nightly RunPod pipeline end to end — vendor downloads (EODHD, Sharadar, Tiingo, borrow, calendar, FinBERT), then post/validate/build_m1, market, predict, and the reports bundle. Use this whenever the user asks to run the daily pipeline, "launch all", "run launch all and monitor", refresh suggestions, rebuild m1, or check on running pods; and also whenever a pipeline run needs babysitting, a pod looks stuck, a stage failed and needs resuming, or the user asks whether the downloads finished. Prefer this over improvising with launch.sh directly, because the ordering constraints and the "looks finished but silently half-built" failure modes are not visible from the scripts themselves.
+description: Run and monitor the nightly MODEL pipeline on RunPod — gate on a current volume, then market (m1x whole-market panel), predict (continual warm update -> target book -> suggestions), and the MongoDB publish of the console bundle. Use this whenever the user asks to run the daily pipeline, refresh suggestions, run market/predict, check on running pods, or whether the console is current; and whenever a run needs babysitting, a pod looks stuck, or a stage failed and needs resuming. The vendor downloads (EODHD, Sharadar, Tiingo, borrow, calendar, FinBERT, minute bars) and post/validate/build_m1 are NOT here — they are the separate DataAcquistion repo (../DataAcquistion, its daily-fetch skill); this skill starts by checking that repo's output landed on the volume. Prefer this over improvising with launch_predict.sh directly, because the ordering, the freshness gate and the "looks finished but silently stale" failure modes are not visible from the scripts themselves.
 ---
 
-# Daily pipeline: run and monitor
+# Daily pipeline: run and monitor (models)
 
-The pipeline runs entirely on RunPod pods against one network volume. Your job is to launch
-it, watch it, **verify each stage actually did its work**, and only then let the next stage
-run. The recurring danger is not loud failure — it is a stage that exits, self-terminates,
-and leaves stale output that the next stage happily consumes.
+This repo owns the MODEL half of the day. The DATA half — every vendor pull and the
+`validate` → `build_m1` landing layer — lives in the **DataAcquistion** repo
+(`/Users/dhruvdesai/Development/DataAcquistion`, its own `scripts/daily.sh` and
+`daily-fetch` skill). The two repos share nothing but the RunPod network volume: that repo
+writes the raw vendor trees and `m1/`; this one reads them and writes `m1x/`, `derived/`,
+`models/`, then publishes to MongoDB. **Never launch a fetcher from here.** If the data is
+not current, the fix is to run the fetch in that repo, not to improvise one.
 
-Bundled helpers (all read `data_acquisition/runpod/.env`). They live in
-`.claude/skills/daily-pipeline/scripts/` — NOT the repo-root `scripts/` — so always call them
-by that full path (`SK=.claude/skills/daily-pipeline/scripts` and `$SK/pods` works well):
+Your job is to check the volume is current, launch the model stages, watch them, **verify
+each stage actually did its work**, and confirm the publish. The recurring danger is not
+loud failure — it is a stage that exits, self-terminates, and leaves stale output behind.
+
+Bundled helpers (all read `runpod/.env`). They live in `.claude/skills/daily-pipeline/scripts/`
+— NOT the repo-root `scripts/` — so always call them by that full path
+(`SK=.claude/skills/daily-pipeline/scripts` and `$SK/pods` works well):
 
 | script | what it does |
 |---|---|
 | `pods` | current pods, one per line; empty means none running |
-| `vol` | `aws s3` against the volume — `vol ls data/…`, `vol cp data/_run.json /tmp/x --quiet` (note: `_pod_logs/` sits at the volume ROOT, not under `data/`) |
+| `vol` | `aws s3` against the volume — `vol ls m1/`, `vol cp derived/predict/suggestions.json /tmp/x --quiet` (note: `_pod_logs/` sits at the volume ROOT) |
 | `podlog <pattern> [n]` | newest matching `_pod_logs/` entry, tailed; works after the pod is gone |
-| `verify_fetch.py [FLOOR_ISO]` | per-vendor manifest check; exit 0 only if all fresh and zero hard failures |
 | `watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
 
-Reaping is a repo-root script, not one of these: `data_acquisition/scripts/reap_pods.sh`
-deletes a pod once that pod's OWN log shows its job finished. `scripts/daily.sh` runs it
-in the background for the whole run, so a hand-driven launch is the case that needs it —
-start `reap_pods.sh --watch` alongside the watchdog, or run it bare for a one-pass status.
-Do NOT use `killpod.sh` mid-run: it kills every pod, including ones still working.
+Reaping is a repo-root script, not one of these: `scripts/reap_pods.sh` (a copy of the
+DataAcquistion one; both repos reap on the same account) deletes a pod once that pod's OWN
+log shows its job finished. `scripts/daily.sh` runs it in the background for the whole run,
+so a hand-driven launch is the case that needs it — start `reap_pods.sh --watch` alongside
+the watchdog, or run it bare for a one-pass status.
 
-## Before launching
+## The one-command form
 
-Check these — each has burned a real run:
+```sh
+scripts/daily.sh
+```
 
-1. **Time.** Launch after 21:00 UTC. EODHD publishes the bulk day-file around 23:30 UTC.
-   The fetcher re-pulls the trailing few sessions every night (EODHD mutates recent day-files),
-   so a same-night pull is not frozen forever — but it IS what the book prices against, so
-   launching late still matters. Expect the same-night file ~12% lighter than its neighbors
-   (~44k rows vs ~50k): the gap is late-publishing fund-NAV series (`0P…` codes), zero equity
-   names, and the next night's re-pull tops it up. In the fetch log, `+N day-files … 1 deferred`
-   is normal: the deferred one is the not-yet-published next session (or the 1999-12-31
-   backfill boundary), and the deep-history backfill is complete (`~1999-12-31+ remaining`).
-2. **No pods already running.** `$SK/pods`. A vendor whose pod is up is skipped, not
-   doubled, so a stray pod silently means that vendor does not refresh.
-3. **Baseline the volume** so you can prove movement later: newest `data/eod_bulk/US/*.json`,
-   and the `_run.json` timestamp of each vendor tree. Note the newest day-file — the run must
-   add the session that just closed.
-4. **Sleep.** On macOS, sleeping suspends every background loop you start (a run once lost
+does everything below (gate → market → predict → publish check) and ends with
+`DONE — MongoDB updated`. The sections that follow are for driving or debugging it by hand.
+
+## Before launching: the gate
+
+The models must not run on stale tables. Check, in this order:
+
+1. **Is the volume current?** Two objects tell you, both via `$SK/vol ls`:
+   - `m1/_manifest.json` — written by the DataAcquistion post stage. It must be **newer than
+     the newest `data/eod_bulk/US/<DATE>.json` day-file** (post consumed the latest pull) and
+     no more than ~36 h old.
+   - the newest day-file itself must be **the session that just closed** — that is what the
+     book will price against (G-02 later checks `as_of_close` equals it).
+   `scripts/daily.sh` applies exactly this gate and refuses otherwise (`SKIP_DATA_CHECK=1`
+   overrides). If it fails, the answer is `(cd ../DataAcquistion && scripts/daily.sh)` — or,
+   if only post failed there, its `launch.sh validate` then `launch.sh m1`. Do not run market or
+   predict until the manifest is fresh.
+2. **No pods already running.** `$SK/pods`. A job whose pod is up is skipped, not doubled.
+   A pod from the DataAcquistion fetch may legitimately still be up (`investopediaclaude-intraday`
+   runs for hours) — that one is not a reason to wait; post does not depend on it either.
+3. **Sleep.** On macOS, sleeping suspends every background loop you start (a run once lost
    8.5 h this way). Hold the machine awake for the run only, tied to your chain's pid:
    `caffeinate -dims -w <pid> &`.
 
-## Launch
+## Run, in order — `market` builds the panel `predict` consumes
 
 ```sh
-data_acquisition/scripts/launch.sh all && data_acquisition/scripts/launch.sh post
+scripts/launch_predict.sh market      # then confirm job=0 before continuing
+scripts/launch_predict.sh predict     # ends by publishing the console bundle to MongoDB
 ```
 
-Fire `post` immediately after `all`, never later. `post` waits for vendor manifests **newer
-than its own launch** (minus a 10-min grace), so a `post` started after the fetchers finish
-waits out its full 240-min timeout and then builds anyway with recorded gaps.
+`launch_predict.sh` does not verify startup, so after each launch confirm a
+`<ts>-predict-<job>-<podid>.log` appears in `_pod_logs/` within ~3 min. If it never does, the
+pod landed on a broken host: it will bill indefinitely while reporting RUNNING, so DELETE it and
+relaunch. Never size these below 4 vCPU — 4 GB OOMs them. If EU-RO-1 has no CPU, the launcher
+falls back automatically to the cheapest available GPU — expect `placed on: GPU NVIDIA RTX
+A4500`; that is normal and correct, the job still runs the CPU image.
 
-`launch.sh` verifies each pod actually started (its bootstrap log appears on the volume) and
-retries a dead placement once. If EU-RO-1 has no CPU, it falls back automatically to the
-cheapest available GPU — expect lines like `placed on: GPU NVIDIA RTX A4500`. That is normal
-and correct; the job still runs the CPU image.
+`scripts/watch_jobs.sh market` / `predict` watches a job to completion with ONE auto-relaunch
+(it reaps a failed pod first, because a dead-but-present pod blocks its own relaunch).
 
 ## Monitor
 
@@ -72,96 +89,14 @@ Start the watchdog and leave it attached to a Monitor — it only speaks on stat
 POLL=180 STALL_CHECKS=5 python3 .claude/skills/daily-pipeline/scripts/watch_pods.py
 ```
 
-While pods run, check progress with `$SK/podlog`. Rough shape of a warm run: calendar and
-finbert finish in seconds; nasdaq ~10 min; borrow ~30 min; tiingo ~35 min; **eodhd ~70-80 min**
-and is always the long pole; `post` then takes ~7 min once its gate clears.
+While pods run, check progress with `$SK/podlog predict-market` / `predict-predict`. A
+`STALL` line means the pod is alive but its log has not grown — read the log before acting.
 
-A `STALL` line means the pod is alive but its log has not grown — read the log before acting;
-it may be a slow vendor rather than a hang. `post` is deliberately exempt, because it prints
-its gate line once and then polls in silence for as long as the fetchers take.
-
-A pod that stays up AFTER its log ends in `fetch=<rc>` / `job=<rc>` has failed to delete
-itself. That is not cosmetic: RunPod relaunches the container, so the job RE-RUNS every
-~5 min (calendar and finbert each ran 5x on 2026-09-09, burning vendor calls), and the
-next night `launch.sh` skips that vendor as "already running". Reap it —
-`data_acquisition/scripts/reap_pods.sh` — rather than waiting it out.
-
-## Verify the downloads
-
-Do not treat "pod gone" as success. Run:
-
-```sh
-python3 .claude/skills/daily-pipeline/scripts/verify_fetch.py <post-launch-ISO-minus-10min>
-```
-
-Every tree must be `FRESH` with `fail=0`, and `STALE`/`HARD FAILURES` must both be none.
-Then confirm the session that just closed actually landed:
-
-```sh
-.claude/skills/daily-pipeline/scripts/vol ls data/eod_bulk/US/ | tail -3
-```
-
-Tiingo `DEFER` entries are budget deferrals, not failures — they resume next run.
-
-The four `…/watchlist` trees are the data-only watchlist (`config/watchlist_*.json`), fetched
-inside the eodhd/nasdaq/tiingo/borrow pods BEFORE their main pass (borrow's is iBorrowDesk
-history only — the IBKR snapshot already covers every name) — each of those pod logs shows a
-`watchlist=<rc>` line, and a watchlist failure also turns the final `fetch=` nonzero. They must be
-FRESH with `fail=0` like the rest, but nothing downstream reads them, so a watchlist failure is
-never a reason to hold post/market/predict. They add ~12 min to the tiingo pod every night (13
-symbols refetched daily at 72 s pacing), so tiingo no longer exits in ~25 s on a skip-fresh night.
-
-`finbert` reporting `added=0` is normal, not a shirked job: it only verifies the pinned
-model files (size+sha) are on the volume, so a warm run adds nothing.
-
-**Vendor restatements look like pipeline bugs but aren't.** If build_m1's row counts move by
-thousands day-over-day while validate stays green (e.g. `raw_prices_eod` SHRINKING despite a
-new session), suspect EODHD restating a single name's history. Diagnose it in one step: diff
-the `OK   eod <TICKER>.US: N` lines between the two nights' `fetch.py` pod logs — the ticker
-whose count jumped is your answer. Seen 2026-08-28: DD lost its entire pre-2017 (pre-DowDuPont)
-tape, −4,444 rows, every other name +0/+1. Daily predict (panel tail 2021+) doesn't care;
-note it for the next stage1–3 rerun instead.
-
-`borrow` is the one job whose misses are permanent: the IBKR snapshot is a live file with no
-history. Confirm its `borrow usa: N rows [snapshot …]` line appears. Its iBorrowDesk half only
-refreshes ~80 of 506 names per run, which is by design (each fetch returns a rolling year that
-closes the gap), so a large "stale" count there is not an error.
-
-Both borrow passes end with the **iBorrowDesk v2 all-time backfill** (`collect_history_v2`, keyed
-by `IBORROWDESK_API_KEY`), which reports under `_run.json` → `history_v2` and never touches `ok`
-or `fetch=`. It is breadth-first, so until it completes (~Nov 2026) `allowance spent (0 units left) —
-the rest continues on the first run after 2026-10-01` and `N partial` are the EXPECTED state, not
-failures: the Patreon allowance is 500 units/month and resets on the 1st. What needs attention is
-`FAIL borrow_history_v2` or a `v2 validation: … failing K [...]` with K > 0 (each failing name gets a
-`WARN v2 validation` line). Once done it logs `complete for all N names — nothing requested`.
-`BORROW_V2_ONLY=1 scripts/launch.sh borrow` runs just that backfill (manifest `_run_history_v2.json`).
-
-## Verify post, then run the rest
-
-`post` runs validate then build_m1 **inside one pod**, so they are not separate pod logs:
-
-```sh
-.claude/skills/daily-pipeline/scripts/podlog post.py 30
-```
-
-Require **three** things, not one: `validate exit=0`, `build_m1 exit=0`, and an `m1/_manifest.json`
-whose timestamp is from this run. A negative exit code is a signal death — `exit=-9` is the OOM
-killer. It has struck twice (once leaving 3 of 8 m1 tables rewritten, once — 2026-08-26's run —
-killing BOTH stages on a 2-vCPU pod) while the pod still terminated normally and the manifest
-stayed a day old. `launch.sh` now refuses `post`/`m1`/`validate` below 4 vCPU / 8 GB
-(`ALLOW_SMALL_POD=1` overrides — don't, unless you accept a possible half-build). If 8 GB ever
-OOMs again, relaunch with `RUNPOD_VCPU=8`; the GPU fallback (A4500 = 62 GB) also moots it.
-
-If post failed, do **not** run market/predict; rerun `launch.sh validate` then `launch.sh m1`
-**in that order** (build_m1 consumes validate's quarantine.json; neither has post's launch-time
-gate) and re-verify all three conditions above.
-
-Then, in order — `market` builds the panel `predict` consumes:
-
-```sh
-scripts/launch_predict.sh market      # then confirm job=0 before continuing
-scripts/launch_predict.sh predict     # ends by publishing the console bundle to MongoDB
-```
+A pod that stays up AFTER its log ends in `job=<rc>` has failed to delete itself. RunPod
+relaunches the container; the restart guard stops the job re-running, but the pod bills and
+blocks the next launch as "already running". Reap it — `scripts/reap_pods.sh` — rather than
+waiting it out. A SUCCESSFUL predict pod that got restarted writes a second log whose
+`job=98` looks like a failure: read the OLDEST log for that pod id.
 
 **`predict` publishes the results itself.** After the model writes `suggestions.json`, the
 same pod runs the G-02 freshness check against the volume, builds the console bundle
@@ -169,11 +104,6 @@ same pod runs the G-02 freshness check against the volume, builds the console bu
 (`tools/publish_mongo.py`). The Vercel API serves Mongo and the Render UI serves the API, so
 the deployed console is current the moment the pod log shows it — nothing is downloaded to
 this machine. The pod gets `MONGO_URI`/`DB_PASSWORD` from `runpod/.env`.
-
-`launch_predict.sh` does not verify startup, so after each launch confirm a
-`<ts>-predict-<job>-<podid>.log` appears in `_pod_logs/` within ~3 min. If it never does, the
-pod landed on a broken host: it will bill indefinitely while reporting RUNNING, so DELETE it and
-relaunch. Never size these below 4 vCPU — 4 GB OOMs them.
 
 ## Finish: confirm the publish
 
@@ -201,12 +131,20 @@ scripts/launch_predict.sh publish      # 2-vCPU pod, a few minutes; same three l
 ```
 
 `watch_jobs.sh` prints a loud `PUBLISH FAILED` line for this case but treats the job as
-done; `daily.sh` then fails at its final check with the same re-publish command.
+done; `daily.sh` then fails at its final check with the same re-publish command. A G-02
+failure (`as_of_close` ≠ newest day-file) means the book priced against an older tape than
+the volume now holds — that is the gate above having been skipped or the fetch having landed
+mid-run; re-run market → predict.
 
 Nothing is kept on this machine: the pods write to the network volume and to MongoDB, and
 `reports/` is not in the repo. If the pages look stale, check `published_utc` / `as_of_close`
 on `/api/health` before suspecting the app. Locally, `cd app/backend && npm start` serves the
 same Mongo data when `app/backend/.env` has the credentials.
+
+**Vendor restatements look like model bugs but aren't.** If the m1 row counts moved by
+thousands day-over-day, EODHD restated a single name's history (seen 2026-08-28: DD lost its
+pre-2017 tape; restored 2026-09-15). The DataAcquistion repo's fetch logs are where that is
+diagnosed; daily predict (panel tail 2021+) doesn't care, the stage1–3 rerun does.
 
 `stage1`, `stage2` and `stage3` are **not** part of the daily loop — they are the research and
 backtest stages, rerun only on code/config change or the monthly cadence. The dashboard's
@@ -216,7 +154,7 @@ the stage ordering, sizing, runtimes, and the publish-from-volume finish.
 
 ## Reporting back
 
-Give the user the evidence, not reassurance: a per-vendor table of jobs/ok/fail, the exit code
-of every stage, whether today's day-file landed, the G-02 result, the final book size, and the
+Give the user the evidence, not reassurance: the gate result (m1 manifest timestamp vs the
+newest day-file), the exit code of every stage, the G-02 result, the final book size, and the
 predict pod's `publish=0` + `verify:` line (what the deployed console now shows). If
 something failed, say which stage, what the log showed, and what you did about it.

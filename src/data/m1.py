@@ -1,6 +1,6 @@
 """M1 landing-layer readers (§4 M1).
 
-The data_acquisition pipeline owns M1 (ingestion + snapshots); this module is
+The DataAcquistion repo (../DataAcquistion) owns M1 (ingestion + snapshots); this module is
 the read side: it loads the Parquet tables build_m1.py writes and presents them
 with stable dtypes. Nothing here mutates the landing layer (M1-01).
 """

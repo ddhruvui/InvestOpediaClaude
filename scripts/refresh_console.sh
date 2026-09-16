@@ -14,7 +14,7 @@
 # a backend at it (REPORT_BUNDLE=h60), or via /api/predictions history once published.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. data_acquisition/scripts/_common.sh
+. scripts/_common.sh
 
 SRC_DIR="${1:-stage3}"                 # dir under /workspace/derived on the volume
 BUNDLE="${2:-latest}"                  # bundle name in Mongo

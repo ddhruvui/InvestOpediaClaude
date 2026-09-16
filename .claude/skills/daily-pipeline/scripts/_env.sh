@@ -3,7 +3,7 @@
 # Sourced, not executed. Keeps the volume id out of every script so this works on
 # any clone (the id is per-account and lives only in .env).
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-ENVF="$REPO/data_acquisition/runpod/.env"
+ENVF="$REPO/runpod/.env"
 [ -f "$ENVF" ] || { echo "missing $ENVF" >&2; exit 1; }
 set -a; . "$ENVF"; set +a
 : "${RUNPOD_VOLUME_ID:?set in runpod/.env}"

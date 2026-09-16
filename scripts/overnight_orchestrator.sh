@@ -5,7 +5,7 @@
 # detection and ONE auto-relaunch; on success run stage3 + predict locally and
 # assemble the final report. All output to the orchestrator log.
 cd "$(dirname "$0")/.."
-source data_acquisition/scripts/_common.sh
+source scripts/_common.sh
 say() { echo "[$(date -u +%H:%M:%SZ)] $*"; }
 
 RELAUNCHED=0

@@ -9,18 +9,18 @@
 #   scripts/launch_predict.sh publish   # (re)publish the bundle from the volume to MongoDB — CPU, minutes
 #
 # USE_MARKET=1 (default) points stage1/predict at the m1x whole-market universe;
-# KEEP_POD=1 leaves the pod alive for inspection. Reuses data_acquisition's .env.
-. "$(dirname "$0")/../data_acquisition/scripts/_common.sh"
+# KEEP_POD=1 leaves the pod alive for inspection. Credentials: runpod/.env.
+. "$(dirname "$0")/_common.sh"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 JOB="${1:-stage1}"
 case "$JOB" in test|market|stage1|stage2|stage3|predict|exp|publish) ;; *)
   echo "unknown job '$JOB' (test|market|stage1|stage2|stage3|predict|exp|publish)" >&2; exit 2 ;; esac
-: "${RUNPOD_API_KEY:?set in data_acquisition/runpod/.env}"
+: "${RUNPOD_API_KEY:?set in runpod/.env}"
 # The deployed console reads MongoDB; predict/publish pods write it directly (no laptop hop).
 if [ -z "${MONGO_URI:-}" ]; then
   case "$JOB" in
-    publish) echo "MONGO_URI not set in data_acquisition/runpod/.env — nothing to publish to" >&2; exit 2 ;;
+    publish) echo "MONGO_URI not set in runpod/.env — nothing to publish to" >&2; exit 2 ;;
     predict) echo "WARN: MONGO_URI not in runpod/.env — predict will run but NOT publish to MongoDB" >&2 ;;
   esac
 fi
@@ -181,7 +181,7 @@ fi
 printf '%s\tpredict-%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$JOB" "$POD_ID" \
   >> "$ROOT/runpod/launched-pods.log"
 echo "launched predict-${JOB} pod: ${POD_ID}  [${PLACED_ON}]"
-echo "watch:   data_acquisition/scripts/storage_usage.sh | grep -E '_pod_logs|derived'"
+echo "watch:   scripts/storage_usage.sh | grep -E '_pod_logs|derived'"
 echo "fetch:   aws s3 cp \$S3FLAGS $BUCKET/derived/${JOB}/ ./derived_${JOB}/ --recursive"
 case "$JOB" in predict|publish)
   echo "publish: the pod pushes the console bundle to MongoDB itself — confirm 'publish=0' and the"

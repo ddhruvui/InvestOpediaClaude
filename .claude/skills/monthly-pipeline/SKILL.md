@@ -31,7 +31,7 @@ Reuse the daily skill's helpers throughout: `SK=.claude/skills/daily-pipeline/sc
 ## Run order
 
 `stage1 → stage2 → stage3`, strictly — stage3 consumes the scores directory the earlier
-stages write. All via the repo-root launcher (NOT the daily `launch.sh`):
+stages write. All via the repo-root launcher (the DataAcquistion repo's `launch.sh` plays no part):
 
 ```sh
 scripts/launch_predict.sh stage1     # features -> LGBM heads (purged WF) -> book -> gates; CPU, ~20 min

@@ -13,7 +13,7 @@ this copies them verbatim — nothing is recomputed. *.md files next to them
 (the human-readable book) are stored as text, so nothing needs to stay local.
 
 Credentials: MONGO_URI and DB_PASSWORD from the environment, else from .env at
-the repo root, else data_acquisition/runpod/.env. A literal <db_password>
+the repo root, else runpod/.env. A literal <db_password>
 placeholder in MONGO_URI is replaced with the URL-encoded DB_PASSWORD.
 
 Database InvestOpediaClaude (override with MONGO_DB):
@@ -35,7 +35,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = "InvestOpediaClaude"
-ENV_FILES = [ROOT / ".env", ROOT / "data_acquisition" / "runpod" / ".env"]
+ENV_FILES = [ROOT / ".env", ROOT / "runpod" / ".env"]
 
 
 def load_env_files() -> None:
@@ -60,7 +60,7 @@ def load_env_files() -> None:
 def resolve_uri() -> str:
     uri = os.environ.get("MONGO_URI")
     if not uri:
-        sys.exit("MONGO_URI not set (env, .env, or data_acquisition/runpod/.env)")
+        sys.exit("MONGO_URI not set (env, .env, or runpod/.env)")
     if "<db_password>" in uri:
         pw = os.environ.get("DB_PASSWORD")
         if pw is None:

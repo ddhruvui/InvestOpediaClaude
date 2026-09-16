@@ -2,9 +2,9 @@
 
 Implementation of [stock_prediction_implementation_blueprint_v1_0_1.md](stock_prediction_implementation_blueprint_v1_0_1.md)
 (verified by [blueprint_verification_report_v1.md](blueprint_verification_report_v1.md)).
-Data comes from the [data_acquisition](data_acquisition/README.md) pipeline
-(see [dailyuse.md](dailyuse.md)); everything below runs on RunPod against the same
-network volume.
+Data comes from the separate **DataAcquistion** repo (`../DataAcquistion`), which fills the
+RunPod network volume nightly (raw vendor trees + the `m1/` landing layer); everything below
+reads that volume and never calls a vendor (see [dailyuse.md](dailyuse.md)).
 
 ## Layout (blueprint §8)
 
@@ -37,8 +37,8 @@ ledger/trials.parquet   # every evaluated config -> DSR's N (G-09)
 ## RunPod jobs
 
 ```sh
-scripts/daily.sh                    # one-command daily loop: fetch -> post -> market
-                                    # -> predict (the pod then publishes to MongoDB)
+scripts/daily.sh                    # one-command daily loop: gate (volume current?)
+                                    # -> market -> predict (the pod then publishes to MongoDB)
 scripts/launch_predict.sh test      # T-suite on a CPU pod (validates pod env)
 scripts/launch_predict.sh market    # eod_bulk -> m1x: whole-market panel + top-1000
                                     # survivorship-free universe (G-05). Resumable.
@@ -69,7 +69,7 @@ pod itself turns the volume's artifacts into the report bundle
 (`tools/publish_mongo.py`, database `InvestOpediaClaude`). The API on **Vercel**
 ([app/backend](app/backend/README.md)) reads Mongo and owns the paper book; the UI on
 **Render** ([app/frontend](app/frontend/README.md)) reads the API. Credentials live in
-`data_acquisition/runpod/.env` (gitignored; see its `.env.example`).
+`runpod/.env` (gitignored; see `runpod/.env.example`).
 
 Live: **UI** https://investopediaclaudefe.onrender.com · **API**
 https://invest-opedia-claude-be.vercel.app/api/health

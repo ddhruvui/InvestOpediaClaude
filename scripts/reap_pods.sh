@@ -198,7 +198,7 @@ warn_if_stale_m1() {
   MDATE="$(aws s3 ls $S3FLAGS "$BUCKET/m1/_manifest.json" 2>/dev/null | awk '{print $1}')" || MDATE=""
   [ "$MDATE" = "$TODAY" ] && return 0
   say "!! post exited 0 but m1/_manifest.json is dated '${MDATE:-missing}', not $TODAY —"
-  say "   the M1 tables may be half-built; re-run: data_acquisition/scripts/launch.sh post"
+  say "   the M1 tables may be half-built; re-run post in the DataAcquistion repo: (cd ../DataAcquistion && scripts/launch.sh post)"
 }
 
 matches_only() {   # $1 name  $2 id

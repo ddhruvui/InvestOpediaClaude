@@ -3,7 +3,7 @@
 # Tolerates transient network errors; one auto-relaunch per job on failure.
 # Usage: watch_jobs.sh job1 [job2]
 cd "$(dirname "$0")/.."
-source data_acquisition/scripts/_common.sh
+source scripts/_common.sh
 say() { echo "[$(date -u +%H:%M:%SZ)] $*"; }
 
 check_job() {  # $1=job  $2=relaunched-flag-file ; echo status: running|done|failed
@@ -39,7 +39,7 @@ check_job() {  # $1=job  $2=relaunched-flag-file ; echo status: running|done|fai
       # successful relaunch — so a pod that failed but did not die would silently eat
       # the one retry we get. Pods stopped being able to delete themselves on
       # 2026-09-09, which is exactly when that stopped being hypothetical.
-      data_acquisition/scripts/reap_pods.sh --reap-failed "predict-$j" >&2 || true
+      scripts/reap_pods.sh --reap-failed "predict-$j" >&2 || true
       local i OUT
       for i in $(seq 1 30); do
         OUT=$(RUNPOD_VCPU=8 scripts/launch_predict.sh "$j" 2>&1 | tail -2)

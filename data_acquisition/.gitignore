@@ -1,5 +1,0 @@
-runpod/.env
-runpod/launched-pods.log
-downloads/
-__pycache__/
-*.pyc

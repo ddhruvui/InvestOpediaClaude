@@ -72,7 +72,7 @@ sync 2>/dev/null
 # why it looked like an inside-the-pod restriction. Hence UA below — do not remove it.
 # The ladder then tries GraphQL podTerminate (different host, same UA fix) and runpodctl,
 # and NAMES whichever worked, so a future block shows up in the log instead of a mystery.
-# None of this is load-bearing: data_acquisition/scripts/reap_pods.sh deletes this pod
+# None of this is load-bearing: scripts/reap_pods.sh deletes this pod
 # from the host if every rung fails.
 for attempt in $(seq 1 6); do
   timeout 90 python - <<'PY'
@@ -167,8 +167,8 @@ done
 
 # Every rung refused. Exiting hands the pod back to RunPod, which relaunches it — the
 # restart guard above keeps that from re-running the job, and the host-side reaper
-# (data_acquisition/scripts/reap_pods.sh, run automatically by scripts/daily.sh) deletes
+# (scripts/reap_pods.sh, run automatically by scripts/daily.sh) deletes
 # the pod within a poll or two.
 echo "!! TERMINATION NOT CONFIRMED after retries — leaving this pod to the host-side reaper"
-echo "   (data_acquisition/scripts/reap_pods.sh)"
+echo "   (scripts/reap_pods.sh)"
 sleep 30

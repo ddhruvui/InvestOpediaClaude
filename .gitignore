@@ -1,8 +1,6 @@
-# Downloaded EODHD data (mirrored from the RunPod volume by download.sh) — never commit
+# Volume mirrors (the DataAcquistion repo's download.sh, or an aws s3 cp for a local run) — never commit
 /data/
-# Downloaded Sharadar/Nasdaq Data Link data (mirrored by data_acquisition/scripts/download.sh)
 /data_nasdaq/
-# Downloaded Tiingo data (mirrored by data_acquisition/scripts/download.sh)
 /data_tiingo/
 # Other volume mirrors (borrow, calendar, finbert, M1 landing layer, whole-market panel)
 /data_borrow/

@@ -3,13 +3,13 @@
 # production volume (default 8qik4zxpxq — READ-ONLY over S3) onto the
 # experiment volume (default crimtr8kbf), then self-terminates.
 #   EXP_VOLUME_ID / SRC_VOLUME_ID override the defaults; KEEP_POD=1 to inspect.
-. "$(dirname "$0")/../data_acquisition/scripts/_common.sh"
+. "$(dirname "$0")/_common.sh"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 EXP_VOL="${EXP_VOLUME_ID:-crimtr8kbf}"
 SRC_VOL="${SRC_VOLUME_ID:-$RUNPOD_VOLUME_ID}"
 [ "$EXP_VOL" = "$SRC_VOL" ] && { echo "refusing: EXP and SRC volume are both $EXP_VOL" >&2; exit 2; }
-: "${RUNPOD_API_KEY:?set in data_acquisition/runpod/.env}"
+: "${RUNPOD_API_KEY:?set in runpod/.env}"
 
 DC="${RUNPOD_DATACENTER:-EU-RO-1}"
 CPU_IMAGE="${RUNPOD_IMAGE:-python:3.11-slim}"

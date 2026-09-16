@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Sourced by launch.sh / download.sh / clear_storage.sh / storage_usage.sh / killpod.sh.
+# Sourced by every launcher/watcher in scripts/ (a copy of the DataAcquistion repo's _common.sh —
+# the two repos share the volume and the RunPod account, not code).
 # Loads runpod/.env and sets the S3 flags + bucket used by every script.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$HERE/.." && pwd)"             # data_acquisition/
+ROOT="$(cd "$HERE/.." && pwd)"             # repo root
 ENV_FILE="$ROOT/runpod/.env"
 
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE — copy runpod/.env.example and fill it in" >&2; exit 1; }
