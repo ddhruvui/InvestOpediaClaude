@@ -30,6 +30,9 @@ API CONTRACT (verified live against api.sharadar.com):
               `limit` asked for, so every call is paged: offset=0, ROW_CAP, 2*ROW_CAP, … until a
               page comes back short. Verified live 2026-08-11 (offset=100000 returns a different row
               set than offset=0). Never trust `count` alone — a bare count==ROW_CAP is a CAP HIT.
+              `offset` itself is capped at 500,000 (HTTP 400 "skip too large", seen 2026-09-16) —
+              a separate limit from ROW_CAP, so no single walk may need more than ~50 pages; the
+              warm per-ticker pull is batched by ticker for exactly this reason.
               WARNING: there is NO sort (every sort-parameter spelling is silently ignored), so
               offset paging rides an unstable server-side order. Filtered pulls have shown no
               artifacts, but the UNFILTERED whole-table /tickers walk drops and duplicates rows
@@ -763,14 +766,26 @@ def main():
                 warm = False
         try:
             if warm:
-                base = dict(sf1_extra, **{f"{incr_col}.gte": watermark})
+                # ALWAYS filter server-side by ticker, in 30-name batches. The watchlist already
+                # did (it fits one list); the 506-name universe used to fall back to an UNFILTERED
+                # whole-market `<incr_col>.gte=` walk, which broke on 2026-09-16: Sharadar caps
+                # `skip`/offset at 500,000 (HTTP 400 "skip too large", body points at bulk
+                # downloads). Sharadar rewrites `lastupdated` across a ticker's whole history on any
+                # adjusted-close change, so whole-market DAILY prices since a drifted watermark
+                # (2026-08-05) blow past it — SEP died at page 50, while quarterly SF1 on the same
+                # path was only 15,554 rows and survived. Batching keeps every walk far under the cap
+                # (live: 17 batches of 8-13 pages, max offset ~130k), and also buys what the old
+                # single-call comment wanted anyway: it neither drags in the whole market's updates
+                # nor rides the unstable unfiltered page order.
                 batches = list(_ticker_batches(syms))
-                if len(batches) == 1:
-                    # A universe that fits one ticker list (the watchlist) filters server-side, so it
-                    # neither drags down the whole market's updates nor rides the unfiltered page
-                    # order. The 506-name main universe cannot, and keeps the bulk pull.
-                    base["ticker"] = ",".join(batches[0])
-                rows, _ = _fetch(endpoint, base, label=f"bulk {incr_col}>={watermark}")
+                rows = []
+                for n, batch in enumerate(batches, start=1):
+                    base = dict(sf1_extra, **{f"{incr_col}.gte": watermark},
+                                ticker=",".join(batch))
+                    part, _ = _fetch(endpoint, base,
+                                     label=f"incr batch {n}/{len(batches)} "
+                                           f"({len(batch)} tickers) {incr_col}>={watermark}")
+                    rows.extend(part)
                 uni = set(syms)
                 by = _group_by_ticker([r for r in rows if r.get("ticker") in uni])
                 for s in syms:
