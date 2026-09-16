@@ -149,6 +149,12 @@ launch_vendor() {
       # harmless empty env var so the payload shape stays identical across vendors.
       FETCH_SCRIPT="fetch_borrow.py"; CONFIG_FILE="borrow.json";   DATA_SUBDIR="data_borrow"
       WATCH_FILE="watchlist_borrow.json"
+      # iBorrowDesk v2 all-time backfill (collect_history_v2): its universe is intraday.json's names
+      # narrowed to each pass's own history universe, so both files ride along. The key is optional —
+      # without it that phase logs a skip and the rest of the job is unchanged. BORROW_V2_ONLY=1 runs
+      # ONLY that backfill + its validation (no snapshot, no free pull; manifest _run_history_v2.json).
+      EXTRA_CONFIGS="tickers.json intraday.json"
+      JOB_ENV="\"IBORROWDESK_API_KEY\": \"${IBORROWDESK_API_KEY:-}\", \"BORROW_V2_ONLY\": \"${BORROW_V2_ONLY:-}\","
       TOKEN_VAR="IBKR_FTP_USER";      TOKEN_VAL="${IBKR_FTP_USER:-shortstock}" ;;
     calendar)
       # The only fetcher with a pip dep: exchange_calendars (D-11 needs FUTURE sessions).

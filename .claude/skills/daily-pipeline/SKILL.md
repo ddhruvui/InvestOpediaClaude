@@ -127,6 +127,15 @@ history. Confirm its `borrow usa: N rows [snapshot …]` line appears. Its iBorr
 refreshes ~80 of 506 names per run, which is by design (each fetch returns a rolling year that
 closes the gap), so a large "stale" count there is not an error.
 
+Both borrow passes end with the **iBorrowDesk v2 all-time backfill** (`collect_history_v2`, keyed
+by `IBORROWDESK_API_KEY`), which reports under `_run.json` → `history_v2` and never touches `ok`
+or `fetch=`. It is breadth-first, so until it completes (~Nov 2026) `allowance spent (0 units left) —
+the rest continues on the first run after 2026-10-01` and `N partial` are the EXPECTED state, not
+failures: the Patreon allowance is 500 units/month and resets on the 1st. What needs attention is
+`FAIL borrow_history_v2` or a `v2 validation: … failing K [...]` with K > 0 (each failing name gets a
+`WARN v2 validation` line). Once done it logs `complete for all N names — nothing requested`.
+`BORROW_V2_ONLY=1 scripts/launch.sh borrow` runs just that backfill (manifest `_run_history_v2.json`).
+
 ## Verify post, then run the rest
 
 `post` runs validate then build_m1 **inside one pod**, so they are not separate pod logs:

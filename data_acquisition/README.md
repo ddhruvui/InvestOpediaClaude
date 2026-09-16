@@ -301,13 +301,42 @@ data_tiingo/
 
 # Borrow — D-10 (`scripts/launch.sh borrow`)
 
-`src/fetch_borrow.py` + `config/borrow.json` → `data_borrow/`. **No API key.** Two free sources,
-both verified live 2026-08-11.
+`src/fetch_borrow.py` + `config/borrow.json` → `data_borrow/`. **No API key** for the two free sources,
+both verified live 2026-08-11; the optional all-time backfill (third row) uses `IBORROWDESK_API_KEY`.
 
 | Spec item | Source | Output | Notes |
 |---|---|---|---|
 | **D-10** borrow snapshot (all shortable names) | `ftp://shortstock@ftp2.interactivebrokers.com/usa.txt` | `data_borrow/USA/<DATE>T<HHMMSS>.json.gz` | ~19.7k rows/day, ~0.9 MB gzipped. One immutable file per vendor publication |
 | **D-10** borrow **history** | `https://www.iborrowdesk.com/api/ticker/<T>` | `data_borrow/history/<T>.json` | rolling ~1 y of daily rows, merged append-only by date |
+| **D-10** borrow history, **all-time** | `https://www.iborrowdesk.com/api/v2/daily/borrow` (Bearer key) | merged into `data_borrow/history/<T>.json`; raw in `history_v2/<T>.json` | daily OHLC back to 2015-07 for the 105 `intraday.json` names; metered, see below |
+
+**All-time backfill (iBorrowDesk v2, keyed).** The free endpoint stops at a rolling year; the v2 API
+sells the whole series and the $10+ Patreon tier includes **500 units/month, resetting on the 1st
+UTC** (1 unit = 365 days of one symbol, billed on the span actually returned). `collect_history_v2`
+runs last in both borrow passes and:
+
+* takes `intraday.json`'s stocks + market narrowed to the pass's own history universe — main pass 92
+  names, watchlist pass 13 (BRK-B is billed once, by the main pass);
+* goes **breadth-first**: each run splits the remaining allowance evenly over every unfinished name
+  and fetches that many years back from where each name's history stops (392 units over 92 names =
+  the newest 4 years for all of them), so later allowances deepen every name together. Chunks are
+  exact 365-day multiples and the last one starts AT the vendor floor, so splitting costs the same as
+  one all-time request (11 units for a pre-2015 name);
+* new names end ~2 months inside the free rolling year — those recent days are already in `history/`;
+* sizes each request from the free `/api/v2/coverage` (a request whose worst case tops **150 units
+  is a 400**) and from the remaining allowance, so it never asks past it; a 402 defers the rest;
+* merges rows in the free endpoint's shape with **existing days winning** (`source: iborrowdesk_v2`,
+  so M1 `borrow_fees` gains rows but no columns); `history_v2/<T>.json` keeps the raw OHLC, figi,
+  `covered_from` and `complete` — a complete name is never requested again;
+* validates every name after each run into `history_v2/_validation.json`: raw days unique/sorted,
+  OHLC legs consistent, every raw day present in `history/`, and the v2 close **equal to the free
+  pull** on every overlapping day (fee to 0.01 bps, availability exactly); late-starting series are
+  listed (a later listing, or an unlinked identity break such as RKLB's 2025 re-domicile);
+* reports under `_run.json` → `history_v2`, **outside `ok`**: a spent allowance is the expected state
+  for weeks and must never fail the pod carrying the IBKR snapshot.
+
+`BORROW_V2_ONLY=1 scripts/launch.sh borrow` runs only the backfill + validation (no snapshot, no free
+pull) and writes `_run_history_v2.json` instead of `_run.json`, so post.py's gate is untouched.
 
 **Access gotchas that will cost you an afternoon if you rediscover them:**
 
