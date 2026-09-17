@@ -19,8 +19,8 @@ DEFAULT_CONFIG_PATH = REPO_ROOT / "configs" / "system.yaml"
 
 # Everything this repo writes lives under one prefix: on the RunPod volume at VOLUME_RESULTS,
 # locally at the same relative path. The volume root belongs to the DataAcquistion repo
-# (data*/, m1/) and is only read from here. Deliberately not a system.yaml key: that file's
-# bytes are the config_hash, and moving a directory must not force a full refit.
+# (data*/, m1/) and is only read from here. system.yaml's data.out_dir / continual.model_dir
+# name the same places; keep them in step.
 RESULTS_PREFIX = "results/InvestOpediaClaude"
 VOLUME_RESULTS = f"/workspace/{RESULTS_PREFIX}"
 

@@ -55,10 +55,6 @@ results/InvestOpediaClaude/
   code/predict/      bundle.tgz + bootstrap.sh the pods boot from
 ```
 
-`configs/system.yaml` still names `/workspace/derived` and `/workspace/models`. Those keys are
-not read as paths: the scripts pass the real locations as environment variables. Editing the
-file would change `config_hash` and force a full refit, so the stale values stay until the next
-deliberate config change.
 
 ## RunPod jobs
 

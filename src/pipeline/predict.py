@@ -53,9 +53,8 @@ def run_predict(m1_dir: str, eod_dir: str, out_dir: str, config_path: str | None
         cc = cfg.continual
     except AttributeError:
         cc = None
-    # Not cc.model_dir: system.yaml still names the pre-results/ root path, and editing it
-    # would change config_hash (see RESULTS_PREFIX in src/config.py).
-    store =ModelStore(model_dir or os.environ.get("MODEL_DIR") or f"{VOLUME_RESULTS}/models")
+    store = ModelStore(model_dir or os.environ.get("MODEL_DIR")
+                       or (cc.model_dir if cc else f"{VOLUME_RESULTS}/models"))
     sessions_all = M1(m1_dir).sessions()
     mode, why = decide_refit(cfg, store, config_hash, sessions_all, cfg.labels.horizons,
                              forced=refit or os.environ.get("REFIT"))

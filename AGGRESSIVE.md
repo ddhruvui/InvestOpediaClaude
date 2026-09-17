@@ -47,9 +47,6 @@ last-3y and was explicitly declined (no borrowed money).
 ## Run it
 
 ```sh
-# one-time: copy inputs from the production volume (read-only) to crimtr8kbf
-scripts/launch_sync_volume.sh
-
 # reproduce any experiment round
 scripts/launch_exp_aggressive.sh roundF scripts/variants/roundF.json
 

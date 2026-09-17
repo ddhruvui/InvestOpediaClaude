@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Launch an aggressive-branch experiment round (JOB=exp) on the EXPERIMENT
 # volume. The production volume is untouched: code, scores and outputs all live
-# on $EXP_VOLUME_ID (run scripts/launch_sync_volume.sh once first).
+# on $EXP_VOLUME_ID.
 #   scripts/launch_exp_aggressive.sh <round-name> [variants.json]
 # Round outputs land at /workspace/results/InvestOpediaClaude/derived/exp_aggr/<round-name>.
 set -euo pipefail

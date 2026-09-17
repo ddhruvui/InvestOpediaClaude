@@ -28,7 +28,7 @@ data:
   snapshot_immutable: true
   m1_dir: /workspace/m1                # M1 landing layer (build_m1.py output)
   raw_eod_dir: /workspace/data         # raw vendor JSON (news, universe, market)
-  out_dir: /workspace/derived          # M2+ derived tables
+  out_dir: /workspace/results/InvestOpediaClaude/derived   # M2+ derived tables
 
 # ---- §3.2 Labels & barriers -------------------------------------------------
 labels:
@@ -179,7 +179,7 @@ hpo:
   max_trials_per_model: 100
 continual:                             # [IMPL] daily warm-start learning (predict job)
   enabled: true
-  model_dir: /workspace/models         # champion store on the network volume
+  model_dir: /workspace/results/InvestOpediaClaude/models  # champion store on the network volume
   panel_tail_years: 5                  # update-mode data window; must cover feature
                                        #   warmup (273) + train + purge + valid + labels
   update_train_sessions: 252           # warm-fit window: newest labeled year before valid

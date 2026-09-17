@@ -29,7 +29,7 @@ DONE0='fetch=0 (exited) at 2026-09-09T00:37:37Z — terminating pod aaa
 terminate HTTPError: 403
 !! TERMINATION NOT CONFIRMED after retries'
 DONE1='fetch=1 (exited) at 2026-09-09T00:37:37Z — terminating pod aaa'
-MID='OK   eod    SRE.US: 6710 (+6710) [full] -> /workspace/data/SRE.json'
+MID='OK   eod    SRE.US: 6710 (+6710) [full] -> /workspace/data/ohlcv/SRE.json'
 K1=20260909T003730Z-fetch_calendar.py-aaa.log
 K2=20260909T004218Z-fetch_calendar.py-aaa.log
 
