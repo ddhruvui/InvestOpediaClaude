@@ -3,13 +3,13 @@
 # volume. The production volume is untouched: code, scores and outputs all live
 # on $EXP_VOLUME_ID (run scripts/launch_sync_volume.sh once first).
 #   scripts/launch_exp_aggressive.sh <round-name> [variants.json]
-# Round outputs land at /workspace/derived/exp_aggr/<round-name> on the volume.
+# Round outputs land at /workspace/results/InvestOpediaClaude/derived/exp_aggr/<round-name>.
 set -euo pipefail
 ROUND="${1:?usage: launch_exp_aggressive.sh <round-name> [variants.json]}"
 VARIANTS_FILE="${2:-}"
 
 export RUNPOD_VOLUME_ID_OVERRIDE="${EXP_VOLUME_ID:-crimtr8kbf}"
-export OUT_DIR="/workspace/derived/exp_aggr/${ROUND}"
+export OUT_DIR="/workspace/results/InvestOpediaClaude/derived/exp_aggr/${ROUND}"
 if [ -n "$VARIANTS_FILE" ]; then
   [ -f "$VARIANTS_FILE" ] || { echo "no such variants file: $VARIANTS_FILE" >&2; exit 2; }
   python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$VARIANTS_FILE" \

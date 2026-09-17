@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# podlog <pattern> [lines] — fetch the NEWEST _pod_logs entry matching <pattern> and tail it.
+# podlog <pattern> [lines] — fetch the NEWEST pod log matching <pattern> and tail it.
 # Pod logs live on the volume, so this works after the pod has self-terminated, which is
-# the only way to see why a finished job failed.
+# the only way to see why a finished job failed. Searches this repo's
+# results/InvestOpediaClaude/_pod_logs/ AND the root _pod_logs/ (DataAcquistion's fetchers).
 set -euo pipefail
 . "$(dirname "$0")/_env.sh"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PAT="$1"; N="${2:-25}"
-KEY=$("$HERE/vol" ls "$BUCKET/_pod_logs/" | awk '{print $4}' | grep -- "$PAT" | sort | tail -1)
+# newest by FILE NAME (leading UTC timestamp) across both directories
+KEY=$(for d in "$RESULTS_PREFIX/_pod_logs" "_pod_logs"; do
+        "$HERE/vol" ls "$BUCKET/$d/" 2>/dev/null | awk -v d="$d" '$4 != "" {print $4 "\t" d "/" $4}'
+      done | grep -- "$PAT" | sort | tail -1 | cut -f2)
 [ -n "$KEY" ] || { echo "no pod log matching '$PAT'" >&2; exit 1; }
 OUT="${TMPDIR:-/tmp}/podlog_$(echo "$PAT" | tr -c 'A-Za-z0-9._-' '_').txt"
-"$HERE/vol" cp "$BUCKET/_pod_logs/$KEY" "$OUT" --quiet
+"$HERE/vol" cp "$BUCKET/$KEY" "$OUT" --quiet
 echo "--- $KEY ($(wc -l < "$OUT" | tr -d ' ') lines) -> $OUT"
 tail -n "$N" "$OUT"

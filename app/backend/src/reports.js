@@ -30,13 +30,14 @@ function currentBranch() {
   }
 }
 
-// main serves the universal whole-market bundle (reports/latest); the top-150
+// main serves the universal whole-market bundle (results/InvestOpediaClaude/reports/latest,
+// the repo's mirror of the volume layout — only when MongoDB is not configured); the top-150
 // experiment branch serves its own restricted-universe bundle. Explicit
 // REPORTS_DIR / REPORT_BUNDLE always win. Checked once at startup.
 const BRANCH_BUNDLE = { top150: 'top150', top200: 'top150' };
 
 function defaultReportsDir() {
-  const base = path.resolve(process.cwd(), '../../reports');
+  const base = path.resolve(process.cwd(), '../../results/InvestOpediaClaude/reports');
   const wanted = process.env.REPORT_BUNDLE || BRANCH_BUNDLE[currentBranch()];
   if (wanted && fs.existsSync(path.join(base, wanted, 'suggestions.json'))) {
     return path.join(base, wanted);

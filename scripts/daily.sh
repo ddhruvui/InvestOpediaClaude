@@ -2,7 +2,8 @@
 # THE one-command daily loop for the MODELS. The vendor fetch is not here any more: the
 # DataAcquistion repo (../DataAcquistion — its own scripts/daily.sh) fills the RunPod
 # network volume and rebuilds the m1 tables; this script reads what it left behind and
-# never launches a fetcher. Sequenced on self-terminating pods:
+# never launches a fetcher; everything it writes lands under results/InvestOpediaClaude/ on the
+# volume (scripts/_common.sh RESULTS). Sequenced on self-terminating pods:
 #
 #   1. gate: the volume must be CURRENT — m1/_manifest.json written AFTER the newest
 #      eod_bulk day-file (post consumed the latest pull) and no older than M1_MAX_AGE_H
@@ -92,9 +93,9 @@ say "4/4 publish: confirming the predict pod pushed the bundle to MongoDB"
 # The pod publishes itself (pod_bootstrap_predict.sh publish_bundle) and its log carries
 # `publish=<ec>` after the `verify:` line. Nothing is mirrored to this machine — reports
 # live in MongoDB only, and the deployed console (Render UI -> Vercel API) reads them there.
-LOG=$(aws s3 ls $S3FLAGS "$BUCKET/_pod_logs/" 2>/dev/null | awk '{print $4}' \
+LOG=$(aws s3 ls $S3FLAGS "$RESULTS/_pod_logs/" 2>/dev/null | awk '{print $4}' \
       | grep "predict-predict-" | sort | tail -1)
-TAIL=$(aws s3 cp $S3FLAGS "$BUCKET/_pod_logs/$LOG" - 2>/dev/null \
+TAIL=$(aws s3 cp $S3FLAGS "$RESULTS/_pod_logs/$LOG" - 2>/dev/null \
        | grep -E '^(publish|verify:|job=)' | tail -4)
 printf '%s\n' "$TAIL" | sed 's/^/  /'
 if printf '%s\n' "$TAIL" | grep -q '^publish=0'; then

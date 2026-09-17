@@ -13,7 +13,7 @@ Runs ON the pod (the day-files only exist on the volume). Steps:
  3. Workset = every name ever selected  (+ Sharadar SP500 ever-members)  ->
     workset_prices/part-YYYY.parquet — the compact panel Stage 1+ actually loads.
 
-Outputs land in MARKET_DIR (default /workspace/m1x). EODHD `adjusted_close` is
+Outputs land in MARKET_DIR (default /workspace/results/InvestOpediaClaude/m1x). EODHD `adjusted_close` is
 the fallback total-return factor source for names Sharadar doesn't cover; the
 M1 adjustment_factors override where present (handled at panel-build time).
 
@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 
 BULK_DIR = Path(os.environ.get("EOD_BULK_DIR", "/workspace/data/eod_bulk/US"))
-MARKET_DIR = Path(os.environ.get("MARKET_DIR", "/workspace/m1x"))
+MARKET_DIR = Path(os.environ.get("MARKET_DIR", "/workspace/results/InvestOpediaClaude/m1x"))
 M1_DIR = Path(os.environ.get("M1_DIR", "/workspace/m1"))
 NASDAQ_DIR = Path(os.environ.get("NASDAQ_DIR", "/workspace/data_nasdaq"))
 UNIVERSE_SIZE = int(os.environ.get("UNIVERSE_SIZE", "1000"))

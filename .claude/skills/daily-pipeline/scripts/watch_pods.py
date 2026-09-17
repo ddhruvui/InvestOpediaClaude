@@ -4,7 +4,8 @@ to a Monitor without flooding it:
 
     UP <name>       pod appeared
     DONE <name>     pod gone (self-terminated, or reaped by reap_pods.sh)
-    STALL <name>    pod alive but its _pod_logs entry has not grown for STALL_CHECKS polls
+    STALL <name>    pod alive but its pod log has not grown for STALL_CHECKS polls
+                    (read from results/InvestOpediaClaude/_pod_logs/ and the root _pod_logs/)
     IDLE            no pods running (printed once per idle stretch)
 
 post is exempt from STALL: post.py prints its gate line once and then polls in
@@ -50,13 +51,15 @@ def pods():
 
 
 def logsizes():
-    r = subprocess.run([os.path.join(HERE, "vol"), "ls", "_pod_logs/"],
-                       capture_output=True, text=True)
     m = {}
-    for ln in r.stdout.splitlines():
-        f = ln.split()
-        if len(f) >= 4:
-            m[f[3]] = f[2]
+    # this repo's pods log under its results prefix; DataAcquistion's fetchers at the root
+    for d in ("results/InvestOpediaClaude/_pod_logs/", "_pod_logs/"):
+        r = subprocess.run([os.path.join(HERE, "vol"), "ls", d],
+                           capture_output=True, text=True)
+        for ln in r.stdout.splitlines():
+            f = ln.split()
+            if len(f) >= 4:
+                m[f[3]] = f[2]
     return m
 
 

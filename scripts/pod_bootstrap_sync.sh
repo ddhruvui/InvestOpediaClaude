@@ -5,14 +5,17 @@
 # is never written. `aws s3 sync` makes re-runs resumable.
 # HARD RULE (same as pod_bootstrap_predict.sh): control ALWAYS reaches the
 # self-termination block; a restart hits the marker and terminates.
+# Raw vendor trees and m1 sit at the volume root (the DataAcquistion repo's); this repo's own
+# state — m1x, derived scores, the ledger, this log — under results/InvestOpediaClaude/ on both.
 set +e
-BOOT_LOG_DIR="/workspace/_pod_logs"
+R="results/InvestOpediaClaude"
+BOOT_LOG_DIR="/workspace/$R/_pod_logs"
 mkdir -p "$BOOT_LOG_DIR" 2>/dev/null
 BOOT_LOG="$BOOT_LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-sync-${RUNPOD_POD_ID:-nopod}.log"
 exec > >(tee -a "$BOOT_LOG") 2>&1
 echo "sync bootstrap $(date -u +%FT%TZ) pod=${RUNPOD_POD_ID:-?} src=${SRC_VOLUME_ID:-?}"
 
-MARKER="/workspace/_pod_logs/.ran-${RUNPOD_POD_ID:-nopod}"
+MARKER="$BOOT_LOG_DIR/.ran-${RUNPOD_POD_ID:-nopod}"
 ec=98
 if [ -f "$MARKER" ]; then
   echo "RESTART DETECTED (marker exists) — skipping sync, terminating"
@@ -29,7 +32,8 @@ else
     # RAW MODE (adoption rebuild): copy ONLY the downloaded vendor trees +
     # the DSR trials ledger. Everything derived (m1, m1x, scores, models)
     # is rebuilt from scratch on this volume by the pipeline itself.
-    for tree in data data_nasdaq data_tiingo data_borrow data_calendar                 data_finbert data_quality ledger; do
+    for tree in data data_nasdaq data_tiingo data_borrow data_calendar \
+                data_finbert data_quality $R/ledger; do
       echo ">> $SRC/$tree/ -> /workspace/$tree/"
       timeout 14400 aws s3 sync "${EP[@]}" --only-show-errors \
         "$SRC/$tree" "/workspace/$tree" --exclude 'logs/*' || ec=1
@@ -42,19 +46,19 @@ else
   else
   echo ">> $SRC/m1/ -> /workspace/m1/"
   timeout 3600 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/m1" /workspace/m1 || ec=1
-  echo ">> $SRC/m1x/ -> /workspace/m1x/"
-  timeout 14400 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/m1x" /workspace/m1x || ec=1
+  echo ">> $SRC/$R/m1x/ -> /workspace/$R/m1x/"
+  timeout 14400 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/$R/m1x" "/workspace/$R/m1x" || ec=1
   echo ">> $SRC/data/market/ -> /workspace/data/market/"
   timeout 3600 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/data/market" /workspace/data/market || ec=1
-  echo ">> $SRC/derived/stage2/ (scores + sentiment) -> /workspace/derived/stage2/"
-  timeout 7200 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/derived/stage2" /workspace/derived/stage2 \
+  echo ">> $SRC/$R/derived/stage2/ (scores + sentiment) -> /workspace/$R/derived/stage2/"
+  timeout 7200 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/$R/derived/stage2" "/workspace/$R/derived/stage2" \
     --exclude '*' --include 'scores_*.parquet' --include 'sentiment_scores.parquet' \
     --include 'stage2_report.json' || ec=1
-  echo ">> $SRC/derived/stage1/ (scores) -> /workspace/derived/stage1/"
-  timeout 3600 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/derived/stage1" /workspace/derived/stage1 \
+  echo ">> $SRC/$R/derived/stage1/ (scores) -> /workspace/$R/derived/stage1/"
+  timeout 3600 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/$R/derived/stage1" "/workspace/$R/derived/stage1" \
     --exclude '*' --include 'scores_*.parquet' || ec=1
-  echo ">> $SRC/ledger/ -> /workspace/ledger/ (seed DSR trial count)"
-  timeout 600 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/ledger" /workspace/ledger || ec=1
+  echo ">> $SRC/$R/ledger/ -> /workspace/$R/ledger/ (seed DSR trial count)"
+  timeout 600 aws s3 sync "${EP[@]}" --only-show-errors "$SRC/$R/ledger" "/workspace/$R/ledger" || ec=1
   echo "---- volume contents after sync ----"
   du -sh /workspace/* 2>/dev/null
   echo "sync done ec=$ec at $(date -u +%FT%TZ)"

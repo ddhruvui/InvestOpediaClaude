@@ -32,6 +32,11 @@
 #   A pod with no log on this volume is never reaped (it may be a JOB=exp pod on the
 #   experiment volume — point this script at that one with RUNPOD_VOLUME_ID_OVERRIDE).
 #
+# Logs are read from BOTH places pods write them: the volume-root _pod_logs/ (the
+# DataAcquistion fetchers) and results/InvestOpediaClaude/_pod_logs/ (this repo's predict and
+# sync pods). The DataAcquistion copy of this script reads only the root, so it leaves this
+# repo's pods on "wait" — scripts/daily.sh runs this copy, which reaps them.
+#
 # Usage:
 #   scripts/reap_pods.sh                     # one pass: report every pod, reap the finished ones
 #   scripts/reap_pods.sh --watch             # keep polling (default: until --deadline, 9h)
@@ -101,18 +106,25 @@ for p in pods:
 ' || return 1
 }
 
-LOGKEYS=""
+LOGKEYS=""   # full keys, one per line: _pod_logs/<log> or results/InvestOpediaClaude/_pod_logs/<log>
 refresh_logkeys() {
-  LOGKEYS="$(aws s3 ls $S3FLAGS "$BUCKET/_pod_logs/" 2>/dev/null | awk '{print $4}')" || LOGKEYS=""
+  local d out
+  LOGKEYS=""
+  for d in "_pod_logs" "$RESULTS_PREFIX/_pod_logs"; do
+    out="$(aws s3 ls $S3FLAGS "$BUCKET/$d/" 2>/dev/null \
+           | awk -v d="$d" '$4 != "" {print d "/" $4}')" || out=""
+    [ -n "$out" ] && LOGKEYS="$LOGKEYS$out"$'\n'
+  done
+  return 0
 }
 
 # Last TAIL_BYTES of a log. The terminate block is ~2 KB, so this stays tiny even for the
 # 260 KB EODHD log we would otherwise re-download on every poll. Falls back to a full copy
 # if the volume's S3 gateway ever stops honouring Range.
-tail_log() {
-  aws s3api get-object $S3FLAGS --bucket "$RUNPOD_VOLUME_ID" --key "_pod_logs/$1" \
+tail_log() {   # $1 = full key from LOGKEYS
+  aws s3api get-object $S3FLAGS --bucket "$RUNPOD_VOLUME_ID" --key "$1" \
       --range "bytes=-${TAIL_BYTES}" "$TMP/tail" >/dev/null 2>&1 \
-    || aws s3 cp $S3FLAGS "$BUCKET/_pod_logs/$1" "$TMP/tail" --quiet >/dev/null 2>&1 \
+    || aws s3 cp $S3FLAGS "$BUCKET/$1" "$TMP/tail" --quiet >/dev/null 2>&1 \
     || return 1
   cat "$TMP/tail"
 }
@@ -139,7 +151,9 @@ classify() {
   local name="$1" id="$2" keys nkeys newest k t code restarts="" found=""
   VERDICT="wait"; REASON="no log on this volume yet"
 
-  keys="$(printf '%s\n' "$LOGKEYS" | grep -- "-${id}\.log$" | sort || true)"
+  # oldest first by FILE NAME (its leading UTC timestamp), not by the directory in the key
+  keys="$(printf '%s\n' "$LOGKEYS" | grep -- "-${id}\.log$" \
+          | awk -F/ '{print $NF "\t" $0}' | sort | cut -f2- || true)"
   [ -n "$keys" ] || return 0
   nkeys="$(printf '%s\n' "$keys" | grep -c . || true)"
   newest="$(printf '%s\n' "$keys" | tail -1)"

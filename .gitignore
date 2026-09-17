@@ -16,13 +16,12 @@ __pycache__/
 
 # --- prediction stack: generated / downloaded, never sourced from git ---
 .pytest_cache/
-derived_*/
-artifacts/models/
-artifacts/scores/
 scratch*/
 *.log
-# reports stay tracked (small, reviewable): artifacts/reports/
-# ledger/trials.parquet stays tracked (G-09 append-only audit trail)
+# Every output lives on the RunPod volume under results/InvestOpediaClaude/ and reaches the
+# console through MongoDB; nothing is kept here. A local rehearsal writes the same layout
+# into ./results/, which must never be committed.
+/results/
 
 # --- app ---
 node_modules/

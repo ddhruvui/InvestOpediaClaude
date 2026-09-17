@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Launch the one-shot data-sync pod: copies prediction-stack inputs from the
 # production volume (default 8qik4zxpxq — READ-ONLY over S3) onto the
-# experiment volume (default crimtr8kbf), then self-terminates.
+# experiment volume (default crimtr8kbf), then self-terminates. Both volumes are expected on
+# the results/InvestOpediaClaude/ layout (scripts/launch_predict.sh migrate converts one).
 #   EXP_VOLUME_ID / SRC_VOLUME_ID override the defaults; KEEP_POD=1 to inspect.
 . "$(dirname "$0")/_common.sh"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,9 +23,9 @@ if printf '%s' "$RUNNING" | grep -q "investopediaclaude-sync"; then
   echo "SKIP: pod investopediaclaude-sync already running"; exit 0
 fi
 
-echo "Uploading sync bootstrap to s3://$EXP_VOL/code/sync/bootstrap.sh ..."
+echo "Uploading sync bootstrap to s3://$EXP_VOL/$RESULTS_PREFIX/code/sync/bootstrap.sh ..."
 aws s3 cp --region "$RUNPOD_S3_REGION" --endpoint-url "$RUNPOD_S3_ENDPOINT" \
-  "$REPO_ROOT/scripts/pod_bootstrap_sync.sh" "s3://$EXP_VOL/code/sync/bootstrap.sh"
+  "$REPO_ROOT/scripts/pod_bootstrap_sync.sh" "s3://$EXP_VOL/$RESULTS_PREFIX/code/sync/bootstrap.sh"
 
 PAYLOAD=$(cat <<JSON
 {
@@ -36,7 +37,7 @@ PAYLOAD=$(cat <<JSON
   "containerDiskInGb": ${RUNPOD_CONTAINER_DISK_GB:-10},
   "volumeMountPath": "/workspace",
   "dataCenterIds": ["${DC}"],
-  "dockerStartCmd": ["bash", "/workspace/code/sync/bootstrap.sh"],
+  "dockerStartCmd": ["bash", "${VOL_RESULTS}/code/sync/bootstrap.sh"],
   "env": {
     "SRC_VOLUME_ID": "${SRC_VOL}",
     "AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}",
@@ -61,4 +62,4 @@ POD_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.
 printf '%s\tsync\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$POD_ID" \
   >> "$ROOT/runpod/launched-pods.log"
 echo "launched sync pod: ${POD_ID}  ($SRC_VOL -> $EXP_VOL)"
-echo "watch: aws s3 ls --region $RUNPOD_S3_REGION --endpoint-url $RUNPOD_S3_ENDPOINT s3://$EXP_VOL/_pod_logs/"
+echo "watch: aws s3 ls --region $RUNPOD_S3_REGION --endpoint-url $RUNPOD_S3_ENDPOINT s3://$EXP_VOL/$RESULTS_PREFIX/_pod_logs/"

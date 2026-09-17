@@ -9,9 +9,12 @@ This repo owns the MODEL half of the day. The DATA half — every vendor pull an
 `validate` → `build_m1` landing layer — lives in the **DataAcquistion** repo
 (`/Users/dhruvdesai/Development/DataAcquistion`, its own `scripts/daily.sh` and
 `daily-fetch` skill). The two repos share nothing but the RunPod network volume: that repo
-writes the raw vendor trees and `m1/`; this one reads them and writes `m1x/`, `derived/`,
-`models/`, then publishes to MongoDB. **Never launch a fetcher from here.** If the data is
-not current, the fix is to run the fetch in that repo, not to improvise one.
+writes the raw vendor trees and `m1/` at the volume root; this one reads them and writes ONLY
+under `results/InvestOpediaClaude/` (`m1x/`, `derived/`, `models/`, `ledger/`, `reports/`, its
+own `_pod_logs/` and code bundle), then publishes to MongoDB from there. **Never launch a
+fetcher from here, and never write to the volume root.** If the data is not current, the fix
+is to run the fetch in that repo, not to improvise one. `results/ResearchGate/` is a separate
+project on the same volume — leave it alone.
 
 Your job is to check the volume is current, launch the model stages, watch them, **verify
 each stage actually did its work**, and confirm the publish. The recurring danger is not
@@ -24,8 +27,8 @@ Bundled helpers (all read `runpod/.env`). They live in `.claude/skills/daily-pip
 | script | what it does |
 |---|---|
 | `pods` | current pods, one per line; empty means none running |
-| `vol` | `aws s3` against the volume — `vol ls m1/`, `vol cp derived/predict/suggestions.json /tmp/x --quiet` (note: `_pod_logs/` sits at the volume ROOT) |
-| `podlog <pattern> [n]` | newest matching `_pod_logs/` entry, tailed; works after the pod is gone |
+| `vol` | `aws s3` against the volume — `vol ls m1/`, `vol cp results/InvestOpediaClaude/derived/predict/suggestions.json /tmp/x --quiet` (this repo's pod logs are `results/InvestOpediaClaude/_pod_logs/`; the root `_pod_logs/` is DataAcquistion's) |
+| `podlog <pattern> [n]` | newest matching pod log from either log dir, tailed; works after the pod is gone |
 | `watch_pods.py` | change-only watchdog: `UP` / `DONE` / `STALL` / `IDLE` |
 
 Reaping is a repo-root script, not one of these: `scripts/reap_pods.sh` (a copy of the
@@ -72,7 +75,7 @@ scripts/launch_predict.sh predict     # ends by publishing the console bundle to
 ```
 
 `launch_predict.sh` does not verify startup, so after each launch confirm a
-`<ts>-predict-<job>-<podid>.log` appears in `_pod_logs/` within ~3 min. If it never does, the
+`<ts>-predict-<job>-<podid>.log` appears in `results/InvestOpediaClaude/_pod_logs/` within ~3 min. If it never does, the
 pod landed on a broken host: it will bill indefinitely while reporting RUNNING, so DELETE it and
 relaunch. Never size these below 4 vCPU — 4 GB OOMs them. If EU-RO-1 has no CPU, the launcher
 falls back automatically to the cheapest available GPU — expect `placed on: GPU NVIDIA RTX
@@ -100,7 +103,8 @@ waiting it out. A SUCCESSFUL predict pod that got restarted writes a second log 
 
 **`predict` publishes the results itself.** After the model writes `suggestions.json`, the
 same pod runs the G-02 freshness check against the volume, builds the console bundle
-(`tools/build_reports.py --volume /workspace`) and pushes it to MongoDB Atlas
+(`tools/build_reports.py --volume /workspace`, reading `results/InvestOpediaClaude/derived/`,
+writing `results/InvestOpediaClaude/reports/latest/`) and pushes it to MongoDB Atlas
 (`tools/publish_mongo.py`). The Vercel API serves Mongo and the Render UI serves the API, so
 the deployed console is current the moment the pod log shows it — nothing is downloaded to
 this machine. The pod gets `MONGO_URI`/`DB_PASSWORD` from `runpod/.env`.

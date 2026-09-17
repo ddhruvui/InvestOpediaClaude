@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import load_config, git_sha
+from src.config import RESULTS_PREFIX, VOLUME_RESULTS, load_config, git_sha
 from src.pipeline.common import prepare
 from src.models.lgbm import LGBMHead
 from src.ensemble.rank import ensemble_rank, deciles, select_long
@@ -264,9 +264,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--m1", default=os.environ.get("M1_DIR", "/workspace/m1"))
     ap.add_argument("--eod", default=os.environ.get("EOD_DIR", "/workspace/data"))
-    ap.add_argument("--out", default=os.environ.get("OUT_DIR", "artifacts/reports/stage3"))
+    ap.add_argument("--out", default=os.environ.get("OUT_DIR", f"{RESULTS_PREFIX}/derived/stage3"))
     ap.add_argument("--scores", default=os.environ.get("SCORES_DIR",
-                                                       "/workspace/derived/stage1"))
+                                                       f"{VOLUME_RESULTS}/derived/stage1"))
     ap.add_argument("--config", default=None)
     ap.add_argument("--max-tickers", type=int, default=None)
     ap.add_argument("--market", default=os.environ.get("MARKET_DIR") or None)

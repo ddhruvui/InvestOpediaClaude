@@ -9,3 +9,7 @@ set -a; . "$ENVF"; set +a
 : "${RUNPOD_VOLUME_ID:?set in runpod/.env}"
 : "${RUNPOD_API_KEY:?set in runpod/.env}"
 BUCKET="s3://$RUNPOD_VOLUME_ID"
+# This repo's own tree on the shared volume (logs, m1x, derived, models, ledger, reports);
+# the root is the DataAcquistion repo's. Same prefix as scripts/_common.sh.
+RESULTS_PREFIX="results/InvestOpediaClaude"
+RESULTS="$BUCKET/$RESULTS_PREFIX"

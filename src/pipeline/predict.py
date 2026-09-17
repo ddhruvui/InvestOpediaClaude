@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import load_config, git_sha
+from src.config import RESULTS_PREFIX, VOLUME_RESULTS, load_config, git_sha
 from src.data.m1 import M1
 from src.pipeline.common import prepare
 from src.models.lgbm import LGBMHead
@@ -53,8 +53,9 @@ def run_predict(m1_dir: str, eod_dir: str, out_dir: str, config_path: str | None
         cc = cfg.continual
     except AttributeError:
         cc = None
-    store = ModelStore(model_dir or os.environ.get("MODEL_DIR")
-                       or (cc.model_dir if cc else "models"))
+    # Not cc.model_dir: system.yaml still names the pre-results/ root path, and editing it
+    # would change config_hash (see RESULTS_PREFIX in src/config.py).
+    store =ModelStore(model_dir or os.environ.get("MODEL_DIR") or f"{VOLUME_RESULTS}/models")
     sessions_all = M1(m1_dir).sessions()
     mode, why = decide_refit(cfg, store, config_hash, sessions_all, cfg.labels.horizons,
                              forced=refit or os.environ.get("REFIT"))
@@ -326,7 +327,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--m1", default=os.environ.get("M1_DIR", "/workspace/m1"))
     ap.add_argument("--eod", default=os.environ.get("EOD_DIR", "/workspace/data"))
-    ap.add_argument("--out", default=os.environ.get("OUT_DIR", "artifacts/reports/predict"))
+    ap.add_argument("--out", default=os.environ.get("OUT_DIR", f"{RESULTS_PREFIX}/derived/predict"))
     ap.add_argument("--config", default=None)
     ap.add_argument("--max-tickers", type=int, default=None)
     ap.add_argument("--market", default=os.environ.get("MARKET_DIR") or None)

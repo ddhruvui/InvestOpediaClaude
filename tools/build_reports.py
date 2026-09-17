@@ -15,8 +15,9 @@ without any compute:
 The heavy ledger (hundreds of thousands of barrier trades) never reaches the
 browser: aggregates + a recent slice do.
 
-    python3 tools/build_reports.py --src derived --out reports/latest
-    python3 tools/build_reports.py --volume /workspace --out /workspace/reports/latest   # on a pod
+    python3 tools/build_reports.py --src <flat dir> --out results/InvestOpediaClaude/reports/latest
+    python3 tools/build_reports.py --volume /workspace \
+        --out /workspace/results/InvestOpediaClaude/reports/latest                      # on a pod
 """
 from __future__ import annotations
 
@@ -33,18 +34,20 @@ MAX_EQUITY_POINTS = 1500      # ~19y of daily -> weekly-ish; keeps the payload s
 TRADE_SAMPLE = 4000           # most recent trades exposed to the table
 
 # Where each input lives on the RunPod volume. `--volume /workspace` stages them into
-# one flat directory (symlinks), which is the layout mirror_reports.sh produces locally.
+# one flat directory (symlinks). The session grid is the DataAcquistion repo's (volume root);
+# everything else is this repo's own output under results/InvestOpediaClaude/.
+RESULTS = "results/InvestOpediaClaude"        # = src.config.RESULTS_PREFIX
 VOLUME_LAYOUT = {
-    "suggestions.json": "derived/predict/suggestions.json",
+    "suggestions.json": f"{RESULTS}/derived/predict/suggestions.json",
     "sessions.parquet": "m1/sessions.parquet",
-    "stage1_report.json": "derived/stage1/stage1_report.json",
-    "stage1_report_clean.json": "derived/stage1/stage1_report_clean.json",
-    "stage2_report.json": "derived/stage2/stage2_report.json",
-    "stage3_report.json": "derived/stage3/stage3_report.json",
-    "stage3_final_report.json": "derived/stage3/stage3_final_report.json",
-    "stage3_equity.parquet": "derived/stage3/stage3_equity.parquet",
-    "stage3_daily_net.parquet": "derived/stage3/stage3_daily_net.parquet",
-    "stage3_trades_ungated.parquet": "derived/stage3/stage3_trades_ungated.parquet",
+    "stage1_report.json": f"{RESULTS}/derived/stage1/stage1_report.json",
+    "stage1_report_clean.json": f"{RESULTS}/derived/stage1/stage1_report_clean.json",
+    "stage2_report.json": f"{RESULTS}/derived/stage2/stage2_report.json",
+    "stage3_report.json": f"{RESULTS}/derived/stage3/stage3_report.json",
+    "stage3_final_report.json": f"{RESULTS}/derived/stage3/stage3_final_report.json",
+    "stage3_equity.parquet": f"{RESULTS}/derived/stage3/stage3_equity.parquet",
+    "stage3_daily_net.parquet": f"{RESULTS}/derived/stage3/stage3_daily_net.parquet",
+    "stage3_trades_ungated.parquet": f"{RESULTS}/derived/stage3/stage3_trades_ungated.parquet",
 }
 
 
@@ -333,10 +336,10 @@ def build_trades(src: Path) -> tuple[dict | None, dict | None]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default="derived", help="flat dir with pod artifacts")
+    ap.add_argument("--src", default=f"{RESULTS}/derived", help="flat dir with pod artifacts")
     ap.add_argument("--volume", default=None,
                     help="RunPod volume root (e.g. /workspace): stage inputs from its layout")
-    ap.add_argument("--out", default="reports/latest")
+    ap.add_argument("--out", default=f"{RESULTS}/reports/latest")
     args = ap.parse_args()
     src = stage_from_volume(Path(args.volume)) if args.volume else Path(args.src)
     out = Path(args.out)

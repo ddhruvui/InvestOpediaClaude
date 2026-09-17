@@ -7,8 +7,8 @@
 # reach MongoDB. Everything is staged in a temp dir that is deleted on exit — reports live
 # in MongoDB only.
 #
-#   scripts/refresh_console.sh                     # derived/stage3 (+predict) -> Mongo bundle "latest"
-#   scripts/refresh_console.sh stage3_h60 h60      # derived/stage3_h60          -> Mongo bundle "h60"
+#   scripts/refresh_console.sh                     # results/.../derived/stage3 (+predict) -> Mongo bundle "latest"
+#   scripts/refresh_console.sh stage3_h60 h60      # results/.../derived/stage3_h60          -> Mongo bundle "h60"
 #
 # The deployed API serves REPORT_BUNDLE (default "latest"); a named era is read by pointing
 # a backend at it (REPORT_BUNDLE=h60), or via /api/predictions history once published.
@@ -16,18 +16,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . scripts/_common.sh
 
-SRC_DIR="${1:-stage3}"                 # dir under /workspace/derived on the volume
+SRC_DIR="${1:-stage3}"                 # dir under results/InvestOpediaClaude/derived on the volume
 BUNDLE="${2:-latest}"                  # bundle name in Mongo
 TMP=$(mktemp -d -t console_bundle); trap 'rm -rf "$TMP"' EXIT
 STAGE="$TMP/src"; OUT="$TMP/reports/$BUNDLE"; mkdir -p "$STAGE" "$OUT"
-echo "volume derived/$SRC_DIR  ->  (temp)  ->  MongoDB bundle '$BUNDLE'"
+echo "volume $RESULTS_PREFIX/derived/$SRC_DIR  ->  (temp)  ->  MongoDB bundle '$BUNDLE'"
 
 # stage3 artifacts (book, trades, equity) + the ensemble stage's member/IC truth
-aws s3 cp $S3FLAGS "$BUCKET/derived/$SRC_DIR/" "$STAGE/" --recursive \
+aws s3 cp $S3FLAGS "$RESULTS/derived/$SRC_DIR/" "$STAGE/" --recursive \
   --exclude '*' --include 'stage3_*' --include '*.json'
 for extra in stage2/stage2_report.json stage1/stage1_report.json \
              predict/suggestions.json predict/suggestions.md; do
-  aws s3 cp $S3FLAGS "$BUCKET/derived/$extra" "$STAGE/" 2>/dev/null \
+  aws s3 cp $S3FLAGS "$RESULTS/derived/$extra" "$STAGE/" 2>/dev/null \
     || echo "  (optional $extra not on volume — that section is omitted)"
 done
 aws s3 cp $S3FLAGS "$BUCKET/m1/sessions.parquet" "$STAGE/" 2>/dev/null \

@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import load_config
+from src.config import RESULTS_PREFIX, load_config
 from src.pipeline.common import prepare, evaluate_book
 from src.models.lgbm import LGBMHead
 from src.models.cnn.render import render_windows
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--m1", default=os.environ.get("M1_DIR", "/workspace/m1"))
     ap.add_argument("--eod", default=os.environ.get("EOD_DIR", "/workspace/data"))
-    ap.add_argument("--out", default=os.environ.get("OUT_DIR", "artifacts/reports/stage2"))
+    ap.add_argument("--out", default=os.environ.get("OUT_DIR", f"{RESULTS_PREFIX}/derived/stage2"))
     ap.add_argument("--config", default=None)
     ap.add_argument("--max-tickers", type=int, default=None)
     ap.add_argument("--market", default=os.environ.get("MARKET_DIR") or None)

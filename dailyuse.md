@@ -7,7 +7,8 @@
 > volume: that repo writes `data/`, `data_nasdaq/`, `data_tiingo/`, `data_borrow/`,
 > `data_calendar/`, `data_finbert/`, `data/tickdata/` and `m1/`; this repo reads them
 > (`src/data/m1.py` for the M1 tables, `src/data/build_market.py` for the raw `eod_bulk`
-> day-files) and writes `m1x/`, `derived/`, `models/`. Credentials for the volume + MongoDB:
+> day-files) and writes ONLY under `results/InvestOpediaClaude/` (`m1x/`, `derived/`, `models/`,
+> `ledger/`, `reports/`, its `_pod_logs/` and code bundle). Credentials for the volume + MongoDB:
 > `runpod/.env` (copy `runpod/.env.example`; same volume id as the DataAcquistion `.env`).
 
 ## GPU fallback when EU-RO-1 has no CPU (automatic)
@@ -37,7 +38,8 @@ scripts/launch_predict.sh market    # eod_bulk -> m1x whole-market panel + top-1
 scripts/launch_predict.sh stage1    # features -> LGBM heads (purged WF) -> book -> gates
 scripts/launch_predict.sh stage2    # + GRU + JKX CNN + FinBERT (GPU pod)
 scripts/launch_predict.sh stage3    # meta gate + barrier-exit event book + CPCV(6,2)
-                                    #   (reads SCORES_DIR, default /workspace/derived/stage2)
+                                    #   (reads SCORES_DIR, default
+                                    #   /workspace/results/InvestOpediaClaude/derived/stage2)
 scripts/launch_predict.sh predict   # latest-close scores -> target book -> suggestions
                                     #   (continual: warm-updates stored champions daily,
                                     #   full refit auto every 21 sessions — see below)
@@ -49,7 +51,7 @@ scripts/watch_jobs.sh stage3 predict   # 10-min watchdog: status, failure tails,
 ## Incremental daily learning (the Monday-morning answer)
 
 Nothing retrains from scratch daily. The `predict` job is **continual**: LGBM champions
-persist on the volume under `/workspace/models/` (`MODEL_DIR`), and each daily run
+persist on the volume under `/workspace/results/InvestOpediaClaude/models/` (`MODEL_DIR`), and each daily run
 
 1. **decides the mode** — `update` if every head has a champion trained under the current
    `config_hash` and the last FULL fit is < `continual.full_refit_sessions` (21 ≈ monthly,
@@ -82,12 +84,12 @@ are one-offs from the initial build, not the daily loop.)
 - Pods self-terminate with a confirmed DELETE; a restart marker prevents billing loops.
   `KEEP_POD=1` keeps a pod alive for inspection; `RUNPOD_VCPU=8` (16 GB) is required for
   stage1/stage3/predict (the 4 GB default OOMs); stage2 needs the GPU flavor (automatic).
-- Outputs land on the volume under `derived/<job>/` (reports, scores, target weights,
-  suggestions). Fetch with:
-  `aws s3 cp $S3FLAGS s3://<volume>/derived/stage3/ ./derived_stage3/ --recursive`
-- `derived_*/` downloads are disposable and gitignored; keep only
-  `artifacts/reports/*.json|md` (small, reviewable) and `ledger/trials.parquet`
-  (G-09 append-only trials ledger feeding the Deflated Sharpe N).
+- Outputs land on the volume under `results/InvestOpediaClaude/derived/<job>/` (reports,
+  scores, target weights, suggestions). Fetch with (after `. scripts/_common.sh`):
+  `aws s3 cp $S3FLAGS $RESULTS/derived/stage3/ ./results/InvestOpediaClaude/derived/stage3/ --recursive`
+- Nothing is kept locally: `results/` is gitignored, and the G-09 append-only trials ledger
+  feeding the Deflated Sharpe N lives only on the volume
+  (`results/InvestOpediaClaude/ledger/trials.parquet`).
 - Ordering: `market` must exist before stage1/predict (`USE_MARKET=1` default);
   stage3 needs a prior stage1 or stage2 scores directory; predict is independent of
   stage3 and can run daily once the DataAcquistion fetch + post have landed on the volume.

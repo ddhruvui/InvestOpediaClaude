@@ -42,9 +42,10 @@ fi
 say "predict done: $(grep 'suggestions written' /tmp/predict_final.log)"
 
 # ---- 3. collect artifacts ----
-mkdir -p artifacts/reports
-cp /tmp/predict_final/suggestions.md artifacts/reports/suggestions_latest.md
-cp /tmp/predict_final/suggestions.json artifacts/reports/suggestions_latest.json
-cp /tmp/stage3_final/stage3_report.json artifacts/reports/stage3_ensemble_report.json
-cp derived_stage2/stage2_report.json artifacts/reports/ 2>/dev/null
-say "FINALIZATION COMPLETE — artifacts in artifacts/reports/"
+L=results/InvestOpediaClaude
+mkdir -p $L/reports/overnight
+cp /tmp/predict_final/suggestions.md $L/reports/overnight/suggestions_latest.md
+cp /tmp/predict_final/suggestions.json $L/reports/overnight/suggestions_latest.json
+cp /tmp/stage3_final/stage3_report.json $L/reports/overnight/stage3_ensemble_report.json
+cp $L/derived/stage2/stage2_report.json $L/reports/overnight/ 2>/dev/null
+say "FINALIZATION COMPLETE — artifacts in $L/reports/overnight/"

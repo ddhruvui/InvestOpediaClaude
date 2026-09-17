@@ -13,7 +13,7 @@ tail_log() { [ -f "$STUB/$1" ] || return 1; cat "$STUB/$1"; }
 eval "$(awk '/^classify\(\) \{/,/^\}$/' "$HERE/reap_pods.sh")"
 
 PASS=0; FAIL=0
-mklog() { printf '%s\n' "$2" > "$STUB/$1"; }          # $1 key, $2 body
+mklog() { mkdir -p "$STUB/$(dirname "$1")"; printf '%s\n' "$2" > "$STUB/$1"; }   # $1 key, $2 body
 t() {  # $1 desc  $2 want  $3 name  $4 id  $5 keys(newline-sep)  [$6 REAP_FAILED]
   local desc="$1" want="$2"
   LOGKEYS="$5"; REAP_FAILED="${6:-}"; VERDICT=""; REASON=""
@@ -81,6 +81,24 @@ $K2"
 mklog "$K1" "$MID"; mklog "$K2" "$MID"
                       t "restarted mid-fetch, no code yet"  wait investopediaclaude-eodhd    aaa "$K1
 $K2"
+
+echo "--- two log dirs: root _pod_logs/ (fetchers) + results/InvestOpediaClaude/_pod_logs/ (models) ---"
+R=results/InvestOpediaClaude/_pod_logs
+KF=_pod_logs/20260917T010000Z-fetch.py-fff.log
+KP=$R/20260917T020000Z-predict-predict-ppp.log
+mklog "$KF" "$DONE0"; mklog "$KP" $'job=0 (exited) at X\npublish=0'
+                      t "predict log under results/, found among both" reap investopediaclaude-predict-predict ppp "$KF
+$KP"
+                      t "fetcher log at root, found among both" reap investopediaclaude-eodhd fff "$KF
+$KP"
+# Sorting the WHOLE key would rank "_pod_logs/..." before "results/..." whatever the time,
+# and read the later restart's job=98 as the outcome. Oldest must mean oldest file name.
+KA=$R/20260917T000000Z-predict-predict-rrr.log
+KB=_pod_logs/20260917T050000Z-predict-predict-rrr.log
+mklog "$KA" $'job=0 (exited) at X\npublish=0'
+mklog "$KB" $'RESTART DETECTED (marker exists) — skipping job, terminating\njob=98 (exited) at X'
+                      t "oldest by file name, not by directory" reap investopediaclaude-predict-predict rrr "$KB
+$KA"
 
 echo "--- never reaped ---"
 mklog "$K1" $'job=0 (exited) at X\nKEEP_POD=1 — not terminating'

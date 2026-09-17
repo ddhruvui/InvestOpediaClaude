@@ -44,14 +44,16 @@ Facts that matter, all from `launch_predict.sh`:
 - CPU jobs default to `RUNPOD_VCPU=8` (16 GB). Never go below 4 vCPU — 4 GB OOMs these jobs.
 - **stage2 is the one true GPU job**: PyTorch image, 40 GB container disk, RTX 4090/A5000/A40.
   The cheap-GPU *fallback* (A4500 etc.) applies only to the CPU jobs, never to stage2.
-- stage3 reads `SCORES_DIR` (default `/workspace/derived/stage2`) with
-  `SCORES_DIR_ALT=/workspace/derived/stage1` as the fallback. To gate on stage1 only —
-  skipping stage2 — set `SCORES_DIR=/workspace/derived/stage1` explicitly.
+- Every output lands under `/workspace/results/InvestOpediaClaude/` (`$VOL_RESULTS` in
+  `scripts/_common.sh`); the volume root is DataAcquistion's and is only read.
+- stage3 reads `SCORES_DIR` (default `$VOL_RESULTS/derived/stage2`) with
+  `SCORES_DIR_ALT=$VOL_RESULTS/derived/stage1` as the fallback. To gate on stage1 only —
+  skipping stage2 — set `SCORES_DIR=/workspace/results/InvestOpediaClaude/derived/stage1` explicitly.
 - `KEEP_POD=1` keeps a pod alive for inspection; `NO_CPCV=1` skips the CPCV block if you only
   need a quick stage3 book.
 
 **Startup verification is on you**: `launch_predict.sh` does not check that the pod actually
-started. After each launch, confirm a `<ts>-predict-<job>-<podid>.log` appears in `_pod_logs/`
+started. After each launch, confirm a `<ts>-predict-<job>-<podid>.log` appears in `results/InvestOpediaClaude/_pod_logs/`
 within ~3 min; if it never does, the pod is on a broken host billing forever while RUNNING —
 DELETE it and relaunch.
 
@@ -68,13 +70,13 @@ failed job ONCE (at `RUNPOD_VCPU=8`). Always pass `WATCH_SINCE` — without it, 
 `job=0` log reads as instant success while today's pod is still booting. Stage2's in-pod
 watchdog allows 18 h, so a long quiet stretch is not a hang; read the log before killing
 anything. Success check per stage: `$SK/podlog "predict-stage1" 5` ends in `job=0`, and fresh
-`*_report.json` files land under `derived/stage1|stage2|stage3/` on the volume.
+`*_report.json` files land under `results/InvestOpediaClaude/derived/stage1|stage2|stage3/` on the volume.
 
 ## Finish: publish from the volume
 
 Reports live in MongoDB only — nothing is mirrored or committed. Once stage3's `job=0` is in,
 re-publish the console bundle from the volume; the pod reads the fresh
-`derived/stage{1,2,3}/*_report.json` and stage3 equity/trades parquets directly:
+`results/InvestOpediaClaude/derived/stage{1,2,3}/*_report.json` and stage3 equity/trades parquets directly:
 
 ```sh
 scripts/launch_predict.sh publish       # 2-vCPU pod, under a minute; log ends publish=0
@@ -82,7 +84,7 @@ scripts/launch_predict.sh publish       # 2-vCPU pod, under a minute; log ends p
 
 Verify the dashboard moved: `curl -s <vercel>/api/health` shows a `built_utc` from this run,
 and the site's Dashboard verdict/gate rows carry the new numbers. A named era
-(`OUT_DIR=/workspace/derived/stage3_h60`) is published from this machine instead, staged in
+(`OUT_DIR=/workspace/results/InvestOpediaClaude/derived/stage3_h60`) is published from this machine instead, staged in
 a temp dir: `scripts/refresh_console.sh stage3_h60 h60`.
 
 ## Caveats worth knowing before comparing numbers
@@ -94,5 +96,5 @@ a temp dir: `scripts/refresh_console.sh stage3_h60 h60`.
 - A `configs/system.yaml` change does two things: it invalidates the stage reports (why you
   are here) and changes `config_hash`, which forces the NEXT daily `predict` into a full
   refit automatically. Expect that daily run to be slower and its book to shift.
-- Every stage fit logs to the G-09 trials ledger (`/workspace/ledger/trials.parquet`) —
+- Every stage fit logs to the G-09 trials ledger (`/workspace/results/InvestOpediaClaude/ledger/trials.parquet`) —
   that is by design (the Deflated Sharpe's N must count every attempt); never reset it.

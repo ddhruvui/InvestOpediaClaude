@@ -15,10 +15,10 @@ while true; do
   PODS=$(curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
     -H "Authorization: Bearer ${RUNPOD_API_KEY}" 2>/dev/null)
   RUNNING=$(printf '%s' "$PODS" | grep -c "predict-stage2" || true)
-  ROW=$(aws s3 ls $S3FLAGS "$BUCKET/_pod_logs/" 2>/dev/null | grep predict-stage2 | tail -1)
+  ROW=$(aws s3 ls $S3FLAGS "$RESULTS/_pod_logs/" 2>/dev/null | grep predict-stage2 | tail -1)
   LOG=$(printf '%s' "$ROW" | awk '{print $4}')
   SIZE=$(printf '%s' "$ROW" | awk '{print $3}')
-  BODY=$(aws s3 cp $S3FLAGS "$BUCKET/_pod_logs/$LOG" - 2>/dev/null | tail -6)
+  BODY=$(aws s3 cp $S3FLAGS "$RESULTS/_pod_logs/$LOG" - 2>/dev/null | tail -6)
 
   if echo "$BODY" | grep -q "job=0"; then
     say "STAGE2 SUCCEEDED ($LOG)"; break
@@ -39,7 +39,7 @@ while true; do
     say "second failure — stopping; manual review needed"; exit 1
   fi
   # crash-loop: many fresh logs for one pod id within the last cycle
-  N_RECENT=$(aws s3 ls $S3FLAGS "$BUCKET/_pod_logs/" 2>/dev/null | grep predict-stage2 \
+  N_RECENT=$(aws s3 ls $S3FLAGS "$RESULTS/_pod_logs/" 2>/dev/null | grep predict-stage2 \
     | awk -v d="$(date -u -v-15M +%Y-%m-%d)" '$1 >= d' | wc -l | tr -d ' ')
   if echo "$BODY" | grep -q "RESTART DETECTED"; then
     say "restart marker fired — pod terminating itself; watching"
@@ -73,15 +73,16 @@ done
 
 # ---------- finalization ----------
 say "downloading stage2 artifacts..."
-mkdir -p derived_stage2
-aws s3 cp $S3FLAGS "$BUCKET/derived/stage2/" derived_stage2/ --recursive \
+L=results/InvestOpediaClaude
+mkdir -p $L/derived/stage2 $L/reports/overnight
+aws s3 cp $S3FLAGS "$RESULTS/derived/stage2/" $L/derived/stage2/ --recursive \
   --exclude "*" --include "stage2_report.json" --include "scores_*.parquet" \
   --include "ensemble_rank.parquet" --include "daily_net_15bps.parquet" >/dev/null 2>&1
-ls derived_stage2/ | head
+ls $L/derived/stage2/ | head
 
 say "running stage3 on the 7-member scores (local, no CPCV)..."
 python3 -m src.pipeline.stage3 --m1 /tmp/real_m1 --eod /tmp/real_m1 \
-  --out /tmp/stage3_stage2 --scores derived_stage2 --market /tmp/real_m1x \
+  --out /tmp/stage3_stage2 --scores $L/derived/stage2 --market /tmp/real_m1x \
   --no-cpcv > /tmp/stage3_stage2.log 2>&1
 say "stage3 exit $? — tail:"
 grep -E "M11-02|adoption|dsr" /tmp/stage3_stage2.log | tail -3
@@ -90,8 +91,8 @@ say "refreshing predictions..."
 python3 -m src.pipeline.predict --m1 /tmp/real_m1 --eod /tmp/real_m1 \
   --out /tmp/predict_final --market /tmp/real_m1x > /tmp/predict_final.log 2>&1
 say "predict exit $?"
-cp /tmp/predict_final/suggestions.md artifacts/reports/suggestions_latest.md 2>/dev/null
-cp /tmp/predict_final/suggestions.json artifacts/reports/suggestions_latest.json 2>/dev/null
-cp /tmp/stage3_stage2/stage3_report.json artifacts/reports/stage3_stage2_report.json 2>/dev/null
-cp derived_stage2/stage2_report.json artifacts/reports/ 2>/dev/null
+cp /tmp/predict_final/suggestions.md $L/reports/overnight/suggestions_latest.md 2>/dev/null
+cp /tmp/predict_final/suggestions.json $L/reports/overnight/suggestions_latest.json 2>/dev/null
+cp /tmp/stage3_stage2/stage3_report.json $L/reports/overnight/stage3_stage2_report.json 2>/dev/null
+cp $L/derived/stage2/stage2_report.json $L/reports/overnight/ 2>/dev/null
 say "ORCHESTRATION COMPLETE"

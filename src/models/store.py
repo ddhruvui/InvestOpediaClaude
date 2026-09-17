@@ -7,7 +7,7 @@ validation window, and the better one keeps the crown. A full from-scratch refit
 happens on the `continual.full_refit_sessions` cadence (= val.retrain_cadence)
 or whenever config/features change, so drift can never accumulate unchecked.
 
-Layout under `continual.model_dir` (default /workspace/models):
+Layout under MODEL_DIR (default /workspace/results/InvestOpediaClaude/models):
     lgbm_h{n}/champion.json            pointer + meta of the reigning model
     lgbm_h{n}/model-<through>-<mode>.txt   booster text, truncated at best_iteration
 

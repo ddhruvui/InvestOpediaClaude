@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Publish a report bundle to MongoDB so the deployed console can serve it.
 
-    python3 tools/publish_mongo.py --bundle /workspace/reports/latest        # on the pod (bundle "latest")
+    python3 tools/publish_mongo.py --bundle /workspace/results/InvestOpediaClaude/reports/latest   # on the pod
     python3 tools/publish_mongo.py --bundle <tmp>/reports/h60 --name h60     # a named era
     python3 tools/publish_mongo.py --bundle <dir> --dry-run                  # show what would change
     python3 tools/publish_mongo.py --bundle <dir> --backfill-git             # + every past book git remembers

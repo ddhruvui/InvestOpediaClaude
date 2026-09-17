@@ -31,8 +31,34 @@ src/
   live/        M18 orders.py (order FILES; submission stays manual)
   pipeline/    stage1.py, stage2.py, stage3.py, predict.py, common.py
 tests/         §9 T-01..T-15 (pytest; also runs on the pod via JOB=test)
-ledger/trials.parquet   # every evaluated config -> DSR's N (G-09)
 ```
+
+Outputs are not kept in the repo: they live on the RunPod volume (below) and the console reads
+them from MongoDB. The G-09 trials ledger (every evaluated config -> DSR's N) is
+`results/InvestOpediaClaude/ledger/trials.parquet` on the volume.
+
+## Volume layout
+
+The RunPod volume is shared. Its root belongs to the DataAcquistion repo (`data*/`, `m1/`, its
+own `code/` and `_pod_logs/`) and other projects keep their own `results/<name>/`. This repo
+**reads** the root and **writes only under `results/InvestOpediaClaude/`**
+(`RESULTS_PREFIX` in `scripts/_common.sh` and `src/config.py`):
+
+```
+results/InvestOpediaClaude/
+  m1x/               whole-market panel + universe (JOB=market)
+  derived/<job>/     stage1|stage2|stage3|predict outputs (scores, reports, suggestions)
+  models/            continual-learning champion store (MODEL_DIR)
+  ledger/            G-09 trials ledger (LEDGER_PATH)
+  reports/latest/    console bundle, built on the pod and pushed to MongoDB
+  _pod_logs/         this repo's pod logs + restart markers
+  code/predict/      bundle.tgz + bootstrap.sh the pods boot from
+```
+
+`configs/system.yaml` still names `/workspace/derived` and `/workspace/models`. Those keys are
+not read as paths: the scripts pass the real locations as environment variables. Editing the
+file would change `config_hash` and force a full refit, so the stale values stay until the next
+deliberate config change.
 
 ## RunPod jobs
 
@@ -64,8 +90,9 @@ Local (mirror or synthetic): `python -m src.pipeline.stage1 --m1 <m1> --eod <dat
 
 The results live **in MongoDB only, viewed through the deployed console** — nothing is
 kept on this machine or in git (`reports/` is ignored). At the end of every predict run the
-pod itself turns the volume's artifacts into the report bundle
-(`tools/build_reports.py --volume /workspace`) and pushes it into MongoDB Atlas
+pod itself turns the volume's `results/InvestOpediaClaude/derived/` artifacts into the report
+bundle `results/InvestOpediaClaude/reports/latest/` (`tools/build_reports.py --volume
+/workspace`) and pushes it into MongoDB Atlas
 (`tools/publish_mongo.py`, database `InvestOpediaClaude`). The API on **Vercel**
 ([app/backend](app/backend/README.md)) reads Mongo and owns the paper book; the UI on
 **Render** ([app/frontend](app/frontend/README.md)) reads the API. Credentials live in

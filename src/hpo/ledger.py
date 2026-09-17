@@ -11,10 +11,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.config import RESULTS_PREFIX
+
 
 class TrialsLedger:
     def __init__(self, path: str | os.PathLike | None = None):
-        self.path = Path(path or os.environ.get("LEDGER_PATH", "ledger/trials.parquet"))
+        self.path = Path(path or os.environ.get("LEDGER_PATH", f"{RESULTS_PREFIX}/ledger/trials.parquet"))
         self._ensure_parent()
 
     def _ensure_parent(self) -> None:

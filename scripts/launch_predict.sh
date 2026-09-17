@@ -7,6 +7,10 @@
 #   scripts/launch_predict.sh predict   # latest-date scores -> target book -> suggestions — CPU,
 #                                       # then publishes the console bundle to MongoDB itself
 #   scripts/launch_predict.sh publish   # (re)publish the bundle from the volume to MongoDB — CPU, minutes
+#   scripts/launch_predict.sh migrate   # ONE-SHOT: move pre-2026-09-17 root state into results/ (idempotent)
+#
+# Everything a job writes lands under results/InvestOpediaClaude/ on the volume ($VOL_RESULTS):
+# m1x/, derived/<job>/, models/, ledger/, reports/, _pod_logs/, and the code bundle itself.
 #
 # USE_MARKET=1 (default) points stage1/predict at the m1x whole-market universe;
 # KEEP_POD=1 leaves the pod alive for inspection. Credentials: runpod/.env.
@@ -14,8 +18,8 @@
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 JOB="${1:-stage1}"
-case "$JOB" in test|market|stage1|stage2|stage3|predict|exp|publish) ;; *)
-  echo "unknown job '$JOB' (test|market|stage1|stage2|stage3|predict|exp|publish)" >&2; exit 2 ;; esac
+case "$JOB" in test|market|stage1|stage2|stage3|predict|exp|publish|migrate) ;; *)
+  echo "unknown job '$JOB' (test|market|stage1|stage2|stage3|predict|exp|publish|migrate)" >&2; exit 2 ;; esac
 : "${RUNPOD_API_KEY:?set in runpod/.env}"
 # The deployed console reads MongoDB; predict/publish pods write it directly (no laptop hop).
 if [ -z "${MONGO_URI:-}" ]; then
@@ -31,7 +35,7 @@ GPU_IMAGE="${RUNPOD_GPU_IMAGE:-runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubun
 FLAVORS="${RUNPOD_CPU_FLAVORS:-[\"cpu3c\",\"cpu3g\",\"cpu3m\",\"cpu5c\",\"cpu5g\",\"cpu5m\"]}"
 GPU_TYPES="${RUNPOD_GPU_TYPES:-[\"NVIDIA GeForce RTX 4090\",\"NVIDIA RTX A5000\",\"NVIDIA A40\"]}"
 VCPU="${RUNPOD_VCPU:-8}"        # stage1/market hold multi-GB panels: 8 vCPU -> 16 GB
-[ "$JOB" = "publish" ] && VCPU="${RUNPOD_VCPU:-2}"   # publish reads a few MB: smallest pod
+case "$JOB" in publish|migrate) VCPU="${RUNPOD_VCPU:-2}" ;; esac   # a few MB / renames: smallest pod
 # Container disk is host-local scratch; all data lives on the network volume, so this only
 # holds the image + pip deps (~2 GB). It is a real placement constraint: EU-RO-1 refused
 # 20 GB at every vCPU count on 2026-08-27 while 10 GB placed instantly. (The GPU path keeps
@@ -53,6 +57,11 @@ RUNNING=$(curl -sS --max-time 30 https://rest.runpod.io/v1/pods \
 if printf '%s' "$RUNNING" | grep -q "investopediaclaude-predict-${JOB}"; then
   echo "SKIP: pod investopediaclaude-predict-${JOB} already running"; exit 0
 fi
+# migrate renames the trees other jobs read and write — never with one of them up.
+if [ "$JOB" = "migrate" ] && printf '%s' "$RUNNING" | grep -q "investopediaclaude-predict-"; then
+  echo "REFUSING migrate: an investopediaclaude-predict-* pod is running — wait for it to finish" >&2
+  exit 2
+fi
 
 echo "Bundling prediction stack ..."
 TMP_TGZ="$(mktemp -t predict-bundle).tgz"
@@ -63,8 +72,8 @@ if [ -n "${DRY_RUN:-}" ]; then
   echo "DRY_RUN: would upload $(du -h "$TMP_TGZ" | cut -f1) bundle + bootstrap; launch $JOB pod"
   exit 0
 fi
-aws s3 cp $S3FLAGS "$TMP_TGZ" "$BUCKET/code/predict/bundle.tgz"
-aws s3 cp $S3FLAGS "$REPO_ROOT/scripts/pod_bootstrap_predict.sh" "$BUCKET/code/predict/bootstrap.sh"
+aws s3 cp $S3FLAGS "$TMP_TGZ" "$RESULTS/code/predict/bundle.tgz"
+aws s3 cp $S3FLAGS "$REPO_ROOT/scripts/pod_bootstrap_predict.sh" "$RESULTS/code/predict/bootstrap.sh"
 rm -f "$TMP_TGZ"
 
 # JSON-escape the Mongo values: a password may hold quotes or backslashes.
@@ -79,13 +88,13 @@ ENV_COMMON=$(cat <<JSON
     "USE_MARKET": "${USE_MARKET:-1}",
     "KEEP_POD": "${KEEP_POD:-}",
     "RUNPOD_TERMINATE_KEY": "${RUNPOD_API_KEY}",
-    "OUT_DIR": "${OUT_DIR:-/workspace/derived/${JOB}}",
-    "SCORES_DIR": "${SCORES_DIR:-/workspace/derived/stage2}",
+    "OUT_DIR": "${OUT_DIR:-$VOL_RESULTS/derived/${JOB}}",
+    "SCORES_DIR": "${SCORES_DIR:-$VOL_RESULTS/derived/stage2}",
     "NO_CPCV": "${NO_CPCV:-}",
-    "LEDGER_PATH": "${LEDGER_PATH:-/workspace/ledger/trials.parquet}",
-    "MODEL_DIR": "${MODEL_DIR:-/workspace/models}",
+    "LEDGER_PATH": "${LEDGER_PATH:-$VOL_RESULTS/ledger/trials.parquet}",
+    "MODEL_DIR": "${MODEL_DIR:-$VOL_RESULTS/models}",
     "REFIT": "${REFIT:-auto}",
-    "SCORES_DIR_ALT": "${SCORES_DIR_ALT:-/workspace/derived/stage1}",
+    "SCORES_DIR_ALT": "${SCORES_DIR_ALT:-$VOL_RESULTS/derived/stage1}",
     "VARIANTS_B64": "${VARIANTS_B64:-}",
     "SYSTEM_CONFIG": "${SYSTEM_CONFIG:-}"
 JSON
@@ -104,7 +113,7 @@ if [ "$JOB" = "stage2" ]; then
   "containerDiskInGb": ${RUNPOD_CONTAINER_DISK_GB:-40},
   "volumeMountPath": "/workspace",
   "dataCenterIds": ["${DC}"],
-  "dockerStartCmd": ["bash", "/workspace/code/predict/bootstrap.sh"],
+  "dockerStartCmd": ["bash", "${VOL_RESULTS}/code/predict/bootstrap.sh"],
   "env": { "PIP_PACKAGES": "${PIP_GPU}", ${ENV_COMMON} }
 }
 JSON
@@ -128,7 +137,7 @@ else
   "containerDiskInGb": ${CPU_DISK},
   "volumeMountPath": "/workspace",
   "dataCenterIds": ["${DC}"],
-  "dockerStartCmd": ["bash", "/workspace/code/predict/bootstrap.sh"],
+  "dockerStartCmd": ["bash", "${VOL_RESULTS}/code/predict/bootstrap.sh"],
   "env": { "PIP_PACKAGES": "${PIP_CPU}", ${ENV_COMMON} }
 }
 JSON
@@ -181,9 +190,11 @@ fi
 printf '%s\tpredict-%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$JOB" "$POD_ID" \
   >> "$ROOT/runpod/launched-pods.log"
 echo "launched predict-${JOB} pod: ${POD_ID}  [${PLACED_ON}]"
-echo "watch:   scripts/storage_usage.sh | grep -E '_pod_logs|derived'"
-echo "fetch:   aws s3 cp \$S3FLAGS $BUCKET/derived/${JOB}/ ./derived_${JOB}/ --recursive"
+echo "log:     aws s3 ls \$S3FLAGS $RESULTS/_pod_logs/ | grep predict-${JOB}-${POD_ID}"
+echo "outputs: $RESULTS/derived/${JOB}/"
 case "$JOB" in predict|publish)
   echo "publish: the pod pushes the console bundle to MongoDB itself — confirm 'publish=0' and the"
   echo "         'verify: ... suggestions.as_of_close=' line in its _pod_logs entry" ;;
+migrate)
+  echo "migrate: its log ends 'migrate=0' then 'job=0' once every tree is under $RESULTS_PREFIX/" ;;
 esac
