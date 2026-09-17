@@ -7,7 +7,9 @@
 > volume: that repo writes `data/`, `data_nasdaq/`, `data_tiingo/`, `data_borrow/`,
 > `data_calendar/`, `data_finbert/`, `data/tickdata/` and `m1/`; this repo reads them
 > (`src/data/m1.py` for the M1 tables, `src/data/build_market.py` for the raw `eod_bulk`
-> day-files) and writes ONLY under `results/InvestOpediaClaude/` (`m1x/`, `derived/`, `models/`,
+> day-files, `data/market/` for SPY, `data/news/` and `data_finbert/` for stage2). The per-ticker
+> OHLCV files in `data/ohlcv/<T>.json` are never opened here: they reach the models only through
+> the `m1/` tables `build_m1` builds from them. This repo writes ONLY under `results/InvestOpediaClaude/` (`m1x/`, `derived/`, `models/`,
 > `ledger/`, `reports/`, its `_pod_logs/` and code bundle). Credentials for the volume + MongoDB:
 > `runpod/.env` (copy `runpod/.env.example`; same volume id as the DataAcquistion `.env`).
 
