@@ -149,7 +149,7 @@ cost:
   per_trade_bps: 15                    # Stage-1 anchor; sensitivity {5, 15, 30}
   net_moo_at_open: true                # net same-name MOO exit+entry legs
   sensitivity_bps: [5, 15, 30]
-  borrow_gc_bps_yr: 50                 # GC ~0.3–1%/yr; per-name HTB override table
+  borrow_gc_bps_yr: 30                 # measured IBKR median 28.9 bps (6/502 S&P > 50); per-name table first
   slippage_bps: 0                      # -> measured (M18/M15-03, >=60 fills)
 exec:
   order_type: MOO

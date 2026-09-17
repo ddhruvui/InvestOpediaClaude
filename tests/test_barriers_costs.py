@@ -89,7 +89,24 @@ def test_t14_cost_model():
                         'fee_bps_yr': [800.0]})
     cm2 = CostModel(borrow_table=tbl)
     assert cm2.borrow_fee_bps('HTB', '2024-06-01') == 800.0
-    assert cm2.borrow_fee_bps('AAPL', '2024-06-01') == 50.0
+    assert cm2.borrow_fee_bps('AAPL', '2024-06-01') == 30.0
+
+
+def test_borrow_fee_layers():
+    """as-of quote -> backfill the first quote before history starts -> GC; NULL fees skipped."""
+    tbl = pd.DataFrame({'date': ['2024-03-01', '2024-04-01', '2024-05-01', '2024-03-01'],
+                        'ticker': ['AAA', 'AAA', 'AAA', 'NOQ'],
+                        'fee_bps_yr': [25.0, 400.0, np.nan, np.nan]})
+    cm = CostModel(borrow_gc_bps_yr=30, borrow_table=tbl)
+    assert cm.borrow_fee_bps('AAA', '2024-03-15') == 25.0     # last quote on/before
+    assert cm.borrow_fee_bps('AAA', '2024-04-01') == 400.0    # quote on the day itself
+    assert cm.borrow_fee_bps('AAA', '2024-06-01') == 400.0    # NULL day doesn't overwrite it
+    assert cm.borrow_fee_bps('AAA', '2015-01-02') == 25.0     # before history: first quote
+    assert cm.borrow_fee_bps('NOQ', '2024-06-01') == 30.0     # only NULLs -> GC
+    assert cm.borrow_fee_bps('ZZZ', '2024-06-01') == 30.0     # not in table -> GC
+    assert cm.borrow_fee_bps('AAA') == 30.0                   # no date -> GC
+    rt = cm.round_trip_frac(side=-1, holding_days=10, ticker='AAA', date='2024-06-01')
+    assert np.isfinite(rt) and abs(rt - (30e-4 + 400 / 1e4 / 252 * 10)) < 1e-12
 
 
 def test_t15_cpcv():
